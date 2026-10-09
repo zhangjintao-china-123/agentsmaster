@@ -1,4 +1,10 @@
+import os from "node:os";
+import path from "node:path";
+
 export function setupPage(pairing: { url: string; svg: string } | null = null, models: { id: string; name: string }[] = []): string {
+  const debugPort = Number(process.env.CHROME_DEBUG_PORT || 9222);
+  const browserUrl = `http://127.0.0.1:${debugPort}`;
+  const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
   const modelOptions = models
     .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`)
     .join("");
@@ -29,6 +35,11 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   <h1>配置</h1>
   <p>登记项目时绑定一个 agent。手机上点项目就会和这个 agent 会话。</p>
   ${pairing ? `<section><h2>手机配对</h2><p>用手机扫这个码。每台电脑有自己的配对码，扫哪台就连哪台。中继看不到聊天内容。</p><div class="pair">${pairing.svg}<a href="${escapeHtml(pairing.url)}">${escapeHtml(pairing.url)}</a></div></section>` : "<p>设置 CLOUD_PUBLIC_URL 后，这里会显示手机配对码。</p>"}
+  <section>
+    <h2>浏览器</h2>
+    <p>手机上看的是这台电脑 ${browserUrl} 上的 Google Chrome。这个端口已经有 Chrome 在听，就接上现有的那个；否则本服务用配置目录 ${escapeHtml(profileDir)} 启动 Chrome。</p>
+    <p>Agent 操作网页时，必须使用 Chrome 的 MCP，并连接到 ${browserUrl}。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。</p>
+  </section>
   <p class="err" id="err"></p>
   <section>
     <h2>Agent</h2>

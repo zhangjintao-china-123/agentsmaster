@@ -26,6 +26,12 @@ npm run server
 
 浏览器打开 http://127.0.0.1:8787/setup ，在这里登记项目和代理。
 
+## 浏览器
+
+手机上看的是本机 `127.0.0.1:9222` 上的 Google Chrome，端口可以用 `CHROME_DEBUG_PORT` 改。这个端口已经有 Chrome 在听，就接上现有的那个；否则用配置目录 `~/.agentsmaster/chrome` 启动。
+
+Agent 操作网页时必须使用 Chrome 的 MCP，并连接到这个调试地址。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。
+
 手机配对地址在启动时写入 `CLOUD_PUBLIC_URL`。没另外指定时，默认是 `https://agents.pptxgen.com`。要换成自己的地址，启动前设置这个变量。电脑连上中转还要设置 `CLOUD_URL`。
 
 看截图、以及 Pi 代理，需要模型密钥：
