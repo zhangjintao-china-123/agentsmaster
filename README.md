@@ -4,12 +4,18 @@
 
 这个仓库只有电脑端服务，以及它和手机之间的协议。手机页面和云端中转不在这里。
 
-## 准备
+## 依赖
 
-- Node.js 22 或更新版本
-- Git
-- Chrome（要用浏览器时）
-- 已登录的 Cursor CLI（命令 `agent`），要用 Cursor 时
+运行服务只需要 **Node.js 22** 或更新版本。下面这些程序是按功能选用的。没装时服务照常启动，不会退出；用到那一项时，会在当次操作里说明缺什么。
+
+- **Cursor CLI**：命令 `agent`，并已执行 `agent login`。只用 Cursor 通道时需要。安装说明见 [Cursor CLI](https://cursor.com/docs/cli/overview)。
+- **Git**：查看改动和提交时需要。
+- **Google Chrome**：使用浏览器时需要。
+- **swiftc**（macOS 命令行工具）：使用桌面画面和键鼠时需要。
+- **csc**（Windows 上的 .NET Framework 编译器）：在 Windows 上使用桌面画面和键鼠时需要。
+- **opencode**、**claude**、**codex**：使用对应通道时需要，并且要在本机登录。
+
+Pi 通道和看截图不依赖上面的命令，改读环境变量里的模型密钥，见下方启动说明。
 
 ## 启动
 

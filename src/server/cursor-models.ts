@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { resolveAgentLaunch } from "./cursor-cli.js";
+import { locateAgent } from "./cursor-cli.js";
 
 export type CursorModel = { id: string; name: string };
 
@@ -7,14 +7,15 @@ let cached: { at: number; models: CursorModel[] } | null = null;
 
 export async function listCursorModels(): Promise<CursorModel[]> {
   if (cached && Date.now() - cached.at < 5 * 60_000) return cached.models;
-  const models = await readModels();
-  cached = { at: Date.now(), models };
+  const launch = locateAgent(["models"]);
+  if (!launch) return [];
+  const models = await readModels(launch);
+  if (models.length) cached = { at: Date.now(), models };
   return models;
 }
 
-function readModels(): Promise<CursorModel[]> {
+function readModels(launch: { command: string; args: string[]; env: NodeJS.ProcessEnv }): Promise<CursorModel[]> {
   return new Promise((resolve) => {
-    const launch = resolveAgentLaunch(["models"]);
     const child = spawn(launch.command, launch.args, {
       env: launch.env,
       windowsHide: true,
@@ -24,6 +25,8 @@ function readModels(): Promise<CursorModel[]> {
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString();
     });
+    child.stdout.on("error", finish);
+    child.stderr.on("error", finish);
     child.on("error", finish);
     child.on("close", finish);
   });
