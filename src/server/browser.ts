@@ -1,12 +1,33 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
 import { loadVisionLlm } from "./llm.js";
 
-const port = Number(process.env.CHROME_DEBUG_PORT || 9222);
+const portFile = path.resolve("data/chrome-port.json");
+
+function validPort(value: number) {
+  return Number.isInteger(value) && value >= 1 && value <= 65535;
+}
+
+function loadPort() {
+  try {
+    const saved = Number(JSON.parse(readFileSync(portFile, "utf8")).port);
+    if (validPort(saved)) return saved;
+  } catch {
+    // 还没在手机上改过端口。
+  }
+  const fromEnv = Number(process.env.CHROME_DEBUG_PORT || 9222);
+  return validPort(fromEnv) ? fromEnv : 9222;
+}
+
+let port = loadPort();
+
+export function chromeDebugPort() {
+  return port;
+}
 const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
 
 type Owner = "idle" | "phone" | "agent";
@@ -14,7 +35,7 @@ type Target = { id: string; type: string; url: string; title?: string; webSocket
 type TargetInfo = { targetId: string; type: string; url: string; title?: string };
 type PageTab = { id: string; url: string; title: string };
 type Frame = { data: string; width: number; height: number };
-type Status = { open: boolean; url: string; title: string; owner: Owner; activeId: string; tabs: PageTab[]; mobile: boolean };
+type Status = { open: boolean; url: string; title: string; owner: Owner; activeId: string; tabs: PageTab[]; mobile: boolean; port: number };
 type Waiter = { resolve: (value: unknown) => void; reject: (error: Error) => void };
 type CdpMessage = { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { message?: string } };
 
@@ -72,7 +93,44 @@ export function browserStatus(): Status {
     activeId,
     tabs: [...pages.values()],
     mobile,
+    port,
   };
+}
+
+export async function setChromeDebugPort(next: number): Promise<Status> {
+  if (!validPort(next)) throw new Error("端口要在 1 到 65535 之间");
+  if (next === port) return browserStatus();
+  closeDebugger();
+  port = next;
+  mkdirSync(path.dirname(portFile), { recursive: true });
+  writeFileSync(portFile, JSON.stringify({ port }), { mode: 0o600 });
+  publish();
+  if (wantScreencast) await setScreencast(true);
+  return browserStatus();
+}
+
+function closeDebugger() {
+  stopBurst();
+  stopWatch();
+  const oldPage = page;
+  const oldBrowser = browserSocket;
+  page = null;
+  browserSocket = null;
+  replacedSocket = oldPage;
+  oldPage?.close();
+  oldBrowser?.close();
+  rejectPending(pending, "调试端口已更换");
+  rejectPending(browserPending, "调试端口已更换");
+  pages.clear();
+  knownTargets.clear();
+  activeId = "";
+  desiredId = "";
+  currentUrl = "";
+  currentTitle = "";
+  screencast = false;
+  connecting = null;
+  openingSocket = null;
+  followNew = false;
 }
 
 export function setPhoneControl(on: boolean) {

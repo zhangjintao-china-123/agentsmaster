@@ -8,7 +8,7 @@ import { gitCommit, gitDiff, gitStatus } from "./git.js";
 import { runCliPrompt } from "./runners/cli.js";
 import { announceCursorSetting, answerCursorPermission, cancelCursor, configureCursor, pendingCursorPermissions } from "./runners/cursor-acp.js";
 import { cancelPi, runPiPrompt, type RunnerEvents } from "./runners/pi.js";
-import { browserStatus, ensureBrowser, navigateBrowser, phoneClick, phoneScroll, phoneType, setBrowserEmitters, setBrowserMobile, setPhoneControl, setScreencast, switchBrowserTab } from "./browser.js";
+import { browserStatus, ensureBrowser, navigateBrowser, phoneClick, phoneScroll, phoneType, setBrowserEmitters, setBrowserMobile, setChromeDebugPort, setPhoneControl, setScreencast, switchBrowserTab } from "./browser.js";
 import { desktopPointer, setDesktopEmitters, setDesktopStream } from "./desktop-stream.js";
 import {
   createSession,
@@ -121,6 +121,9 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
         return;
       case "browser_switch":
         await switchBrowserTab(message.targetId);
+        return;
+      case "browser_port":
+        send(socket, { type: "browser_status", ...await setChromeDebugPort(message.port) });
         return;
       case "browser_input":
         if (message.kind === "click") await phoneClick(message.x, message.y);

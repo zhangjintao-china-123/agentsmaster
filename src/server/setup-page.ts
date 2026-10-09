@@ -1,8 +1,9 @@
 import os from "node:os";
 import path from "node:path";
+import { chromeDebugPort } from "./browser.js";
 
 export function setupPage(pairing: { url: string; svg: string } | null = null, models: { id: string; name: string }[] = []): string {
-  const debugPort = Number(process.env.CHROME_DEBUG_PORT || 9222);
+  const debugPort = chromeDebugPort();
   const browserUrl = `http://127.0.0.1:${debugPort}`;
   const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
   const modelOptions = models
