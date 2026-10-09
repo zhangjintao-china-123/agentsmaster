@@ -26,12 +26,7 @@ npm run server
 
 浏览器打开 http://127.0.0.1:8787/setup ，在这里登记项目和代理。
 
-手机配对要经过你自己的中转。启动前可以设置：
-
-```bash
-CLOUD_URL=
-CLOUD_PUBLIC_URL=
-```
+手机配对地址在启动时写入 `CLOUD_PUBLIC_URL`。没另外指定时，默认是 `https://agents.pptxgen.com`。要换成自己的地址，启动前设置这个变量。电脑连上中转还要设置 `CLOUD_URL`。
 
 看截图、以及 Pi 代理，需要模型密钥：
 

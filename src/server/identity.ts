@@ -12,6 +12,14 @@ export type DaemonIdentity = {
 };
 
 const file = path.resolve("data/daemon-identity.json");
+export const defaultPublicUrl = "https://agents.pptxgen.com";
+
+export function ensurePublicUrl(): string {
+  const configured = process.env.CLOUD_PUBLIC_URL?.trim();
+  if (configured) return configured;
+  process.env.CLOUD_PUBLIC_URL = defaultPublicUrl;
+  return defaultPublicUrl;
+}
 
 export function loadIdentity(): DaemonIdentity {
   if (existsSync(file)) {
@@ -33,8 +41,7 @@ export function loadIdentity(): DaemonIdentity {
 }
 
 export async function pairingCard(): Promise<{ url: string; svg: string } | null> {
-  const cloud = process.env.CLOUD_PUBLIC_URL || process.env.CLOUD_URL || "";
-  if (!cloud) return null;
+  const cloud = ensurePublicUrl();
   const identity = loadIdentity();
   const base = cloud.replace(/^ws/, "http").replace(/\/$/, "");
   const url = `${base}/#server=${identity.serverId}&key=${encodeURIComponent(identity.publicKey)}`;
