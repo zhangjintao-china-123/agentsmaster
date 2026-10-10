@@ -7,7 +7,7 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   const debugPort = chromeDebugPort();
   const browserUrl = `http://127.0.0.1:${debugPort}`;
   const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
-  const phoneUrl = ensurePublicUrl().replace(/^ws/, "http").replace(/\/$/, "");
+  const phoneUrl = phoneDomain(ensurePublicUrl());
   const modelOptions = models
     .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`)
     .join("");
@@ -40,11 +40,11 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   <h1>配置</h1>
   <p>登记项目时绑定一个 agent。手机上点项目就会和这个 agent 会话。</p>
   <section>
-    <h2>手机访问地址</h2>
-    <p>安装完成后，用手机浏览器打开这个地址。</p>
+    <h2>手机配对</h2>
+    <p>手机访问域名</p>
     <p class="phone-url"><a href="${escapeHtml(phoneUrl)}">${escapeHtml(phoneUrl)}</a></p>
+    ${pairing ? `<p>用手机打开上面这一行域名，再扫这个码。每台电脑有自己的配对码，扫哪台就连哪台。</p><div class="pair">${pairing.svg}<a href="${escapeHtml(pairing.url)}">${escapeHtml(pairing.url)}</a></div>` : ""}
   </section>
-  ${pairing ? `<section><h2>手机配对</h2><p>用手机扫这个码。每台电脑有自己的配对码，扫哪台就连哪台。中继看不到聊天内容。</p><div class="pair">${pairing.svg}<a href="${escapeHtml(pairing.url)}">${escapeHtml(pairing.url)}</a></div></section>` : "<p>设置 CLOUD_PUBLIC_URL 后，这里会显示手机配对码。</p>"}
   <section>
     <h2>浏览器</h2>
     <p>手机上看的是这台电脑 ${browserUrl} 上的 Google Chrome。这个端口已经有 Chrome 在听，就接上现有的那个；否则本服务用配置目录 ${escapeHtml(profileDir)} 启动 Chrome。</p>
@@ -212,6 +212,15 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   load().catch(showError);
 </script>
 `;
+}
+
+function phoneDomain(raw: string): string {
+  const normalized = raw.trim().replace(/^ws/, "http");
+  try {
+    return new URL(normalized).origin;
+  } catch {
+    return normalized.split(/[?#]/)[0].replace(/\/$/, "");
+  }
 }
 
 function escapeHtml(value: string): string {
