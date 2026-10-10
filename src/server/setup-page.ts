@@ -21,7 +21,13 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   section { margin-top: 28px; }
   form, .row { display: flex; gap: 8px; align-items: center; }
   form.stack { flex-direction: column; align-items: stretch; }
-  form.stack button { align-self: flex-start; }
+  .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .section-head h2 { margin: 0; }
+  dialog { width: min(440px, calc(100vw - 32px)); border: 0; border-radius: 16px; padding: 20px; background: #1c1f18; color: inherit; }
+  dialog::backdrop { background: rgba(8, 9, 7, 0.72); }
+  dialog h2 { margin: 0 0 4px; font-size: 20px; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .dialog-error { min-height: 1.5em; margin: 0; color: #e6a15c; }
   .project { flex-direction: column; align-items: stretch; gap: 8px; }
   .project-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
   .project small { word-break: break-all; }
@@ -54,8 +60,15 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   </section>
   <p class="err" id="err"></p>
   <section>
-    <h2>项目</h2>
+    <div class="section-head">
+      <h2>项目</h2>
+      <button type="button" id="open-project">登记项目</button>
+    </div>
+    <ul id="projects"></ul>
+  </section>
+  <dialog id="project-dialog">
     <form id="project-form" class="stack">
+      <h2>登记项目</h2>
       <input name="name" placeholder="显示名称，可空" />
       <input name="path" placeholder="电脑上的文件夹路径" required />
       <select name="runner">
@@ -64,10 +77,13 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
         <option value="claude">Claude</option>
         <option value="codex">Codex</option>
       </select>
-      <button>登记</button>
+      <p class="dialog-error" id="dialog-err"></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" id="close-project">取消</button>
+        <button>登记</button>
+      </div>
     </form>
-    <ul id="projects"></ul>
-  </section>
+  </dialog>
 </main>
 <script>
   const err = document.querySelector("#err");
@@ -126,14 +142,22 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
       return item;
     }));
   }
+  const dialog = document.querySelector("#project-dialog");
+  const dialogErr = document.querySelector("#dialog-err");
+  document.querySelector("#open-project").onclick = () => {
+    dialogErr.textContent = "";
+    dialog.showModal();
+  };
+  document.querySelector("#close-project").onclick = () => dialog.close();
   document.querySelector("#project-form").onsubmit = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
       await api("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), path: data.get("path"), runner: data.get("runner") }) });
       event.currentTarget.reset();
+      dialog.close();
       await load();
-    } catch (error) { showError(error); }
+    } catch (error) { dialogErr.textContent = error?.message || String(error || ""); }
   };
   load().catch(showError);
 </script>
