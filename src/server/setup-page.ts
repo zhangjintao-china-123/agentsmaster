@@ -136,12 +136,13 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
     dialog.showModal();
   };
   document.querySelector("#close-project").onclick = () => dialog.close();
-  document.querySelector("#project-form").onsubmit = async (event) => {
+  const projectForm = document.querySelector("#project-form");
+  projectForm.onsubmit = async (event) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(projectForm);
     try {
       await api("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), path: data.get("path"), runner: data.get("runner") }) });
-      event.currentTarget.reset();
+      projectForm.reset();
       dialog.close();
       await load();
     } catch (error) { dialogErr.textContent = error?.message || String(error || ""); }
