@@ -31,6 +31,7 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   .project { flex-direction: column; align-items: stretch; gap: 8px; }
   .project-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
   .project small { word-break: break-all; }
+  .runner { display: block; margin-top: 4px; color: #c8c2b4; }
   input, select, button { font: inherit; border-radius: 10px; padding: 10px 12px; }
   input, select { flex: 1; background: #1c1f18; color: inherit; border: 1px solid #34382d; }
   button { background: #e6a15c; color: #1a140e; border: 0; }
@@ -112,6 +113,10 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
       text.innerHTML = "<b></b><small></small>";
       text.querySelector("b").textContent = project.name;
       text.querySelector("small").textContent = project.path;
+      const runner = document.createElement("span");
+      runner.className = "runner";
+      runner.textContent = Object.fromEntries(runners)[project.runner] || "Cursor";
+      text.append(runner);
       const button = document.createElement("button");
       button.className = "ghost";
       button.textContent = "移除";
@@ -120,25 +125,7 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
         await load();
       };
       head.append(text, button);
-      const select = document.createElement("select");
-      for (const [value, label] of runners) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        if ((project.runner || "cursor") === value) option.selected = true;
-        select.append(option);
-      }
-      select.onchange = async () => {
-        try {
-          await api("/api/projects/runner", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id: project.id, runner: select.value }),
-          });
-          await load();
-        } catch (error) { showError(error); }
-      };
-      item.append(head, select);
+      item.append(head);
       return item;
     }));
   }
