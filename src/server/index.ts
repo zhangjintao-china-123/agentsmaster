@@ -3,15 +3,15 @@ import { WebSocketServer } from "ws";
 import { RUNNERS, type RunnerId } from "../shared/protocol.js";
 import { addSocket, broadcastCatalog } from "./hub.js";
 import { setupPage } from "./setup-page.js";
-import { locateAgent } from "./cursor-cli.js";
 import { listCursorModels } from "./cursor-models.js";
-import { ensurePublicUrl, pairingCard } from "./identity.js";
+import { pairingCard } from "./identity.js";
+import { locateCodex } from "./codex-cli.js";
 import { startTunnel } from "./tunnel.js";
 import {
   addAgent,
   setAgentModel,
   addProject,
-  bindProject,
+  setProjectRunner,
   listAgents,
   listProjects,
   loadStore,
@@ -21,7 +21,6 @@ import {
 } from "./store.js";
 
 const port = Number(process.env.PORT || 8787);
-const publicUrl = ensurePublicUrl();
 
 await loadStore();
 await releaseOrphanedRuns();
@@ -40,14 +39,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/projects" && req.method === "POST") {
       const body = await readJson(req);
-      const agentId = String(body.agentId || "");
-      const project = await addProject(String(body.path || ""), agentId, body.name ? String(body.name) : undefined);
+      const runner = String(body.runner || "cursor") as RunnerId;
+      const project = await addProject(String(body.path || ""), runner, body.name ? String(body.name) : undefined);
       broadcastCatalog();
       return json(res, 200, project);
     }
-    if (url.pathname === "/api/projects/bind" && req.method === "POST") {
+    if (url.pathname === "/api/projects/runner" && req.method === "POST") {
       const body = await readJson(req);
-      const project = await bindProject(String(body.id || ""), String(body.agentId || ""));
+      const project = await setProjectRunner(String(body.id || ""), String(body.runner || "") as RunnerId);
       broadcastCatalog();
       return json(res, 200, project);
     }
@@ -92,8 +91,8 @@ wss.on("connection", (socket) => addSocket(socket));
 server.listen(port, "0.0.0.0", () => {
   console.log(`agentsmaster server http://0.0.0.0:${port}`);
   console.log(`setup http://127.0.0.1:${port}/setup`);
-  console.log(`CLOUD_PUBLIC_URL ${publicUrl}`);
-  if (!locateAgent([])) console.log("未找到 Cursor CLI（命令 agent）。服务继续运行，使用 Cursor 前请先安装并登录。");
+  const codexBin = locateCodex();
+  console.log(codexBin ? `Codex CLI ${codexBin}` : "未找到 Codex CLI（命令 codex）。服务继续运行，使用 Codex 前请先安装并登录。");
   startTunnel(port);
 });
 

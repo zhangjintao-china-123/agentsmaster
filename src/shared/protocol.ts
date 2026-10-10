@@ -21,6 +21,7 @@ export type Project = {
   name: string;
   path: string;
   agentId: string;
+  runner: RunnerId;
 };
 
 export type SessionStatus = "idle" | "working" | "done" | "error";
@@ -40,6 +41,7 @@ export type ChatMessage = {
   id: string;
   role: "user" | "agent" | "tool" | "log";
   text: string;
+  at?: number;
 };
 
 export type Task = {

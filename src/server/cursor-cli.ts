@@ -17,24 +17,6 @@ export function agentEnv(): NodeJS.ProcessEnv {
   };
 }
 
-export function locateAgent(extraArgs: string[]): { command: string; args: string[]; env: NodeJS.ProcessEnv } | undefined {
-  const launch = resolveAgentLaunch(extraArgs);
-  if (!commandExists(launch.command, launch.env)) return undefined;
-  return launch;
-}
-
-function commandExists(command: string, env: NodeJS.ProcessEnv): boolean {
-  if (path.isAbsolute(command) || command.includes(path.sep)) return existsSync(command);
-  const names = process.platform === "win32" ? [command, "agent.cmd", "agent.exe"] : [command];
-  for (const dir of (env.PATH || "").split(path.delimiter)) {
-    if (!dir) continue;
-    for (const name of names) {
-      if (existsSync(path.join(dir, name))) return true;
-    }
-  }
-  return false;
-}
-
 export function resolveAgentLaunch(extraArgs: string[]): { command: string; args: string[]; env: NodeJS.ProcessEnv } {
   const env = agentEnv();
   const configured = process.env.CURSOR_AGENT_BIN?.trim();

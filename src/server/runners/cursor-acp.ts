@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { CursorModelChoice, ImagePayload, PermissionChange, PermissionOption } from "../../shared/protocol.js";
 import { listCursorModels } from "../cursor-models.js";
-import { locateAgent } from "../cursor-cli.js";
+import { resolveAgentLaunch } from "../cursor-cli.js";
 import { appendAgentText, getAgent, getSession, pushMessage, updateSession } from "../store.js";
 import type { RunnerEvents } from "./pi.js";
 
@@ -251,8 +251,7 @@ async function ensureProcess(sessionId: string, events: RunnerEvents): Promise<v
     await entry.ready;
     return;
   }
-  const launch = locateAgent(["--trust", "acp"]);
-  if (!launch) throw new Error("找不到命令 agent。先在这台电脑上安装并登录 Cursor CLI。");
+  const launch = resolveAgentLaunch(["--trust", "acp"]);
   const child = spawn(launch.command, launch.args, {
     cwd: entry.cwd,
     env: launch.env,
@@ -455,10 +454,7 @@ function request(entry: LiveCursor, method: string, params: unknown): Promise<un
 }
 
 function write(entry: LiveCursor, message: unknown): void {
-  const stdin = entry.child?.stdin;
-  if (!stdin || stdin.destroyed) return;
-  if (stdin.listenerCount("error") === 0) stdin.on("error", () => undefined);
-  stdin.write(`${JSON.stringify(message)}\n`);
+  entry.child?.stdin.write(`${JSON.stringify(message)}\n`);
 }
 
 function notify(entry: LiveCursor, method: string, params: unknown): void {
@@ -670,9 +666,8 @@ async function loadCursorCatalog(): Promise<CatalogModel[]> {
 }
 
 function fetchCatalog(): Promise<CatalogModel[]> {
-  const launch = locateAgent(["--trust", "acp"]);
-  if (!launch) return Promise.resolve([]);
   return new Promise((resolve) => {
+    const launch = resolveAgentLaunch(["--trust", "acp"]);
     const child = spawn(launch.command, launch.args, { env: launch.env, stdio: ["pipe", "pipe", "pipe"] });
     let buffer = "";
     let next = 1;
@@ -682,7 +677,7 @@ function fetchCatalog(): Promise<CatalogModel[]> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (child.pid) child.kill();
+      child.kill();
       resolve(models);
     };
     const timer = setTimeout(() => finish([]), 15000);
@@ -712,27 +707,22 @@ function fetchCatalog(): Promise<CatalogModel[]> {
         else waiter.resolve(message.result);
       }
     });
-    child.stdin.on("error", () => undefined);
-    child.stdout.on("error", () => finish([]));
-    child.stderr.on("error", () => undefined);
     child.on("error", () => finish([]));
-    child.on("spawn", () => {
-      void (async () => {
-        try {
-          await send("initialize", {
-            protocolVersion: 1,
-            clientInfo: { name: "agentsmaster", version: "0.1.0" },
-            clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, _meta: { parameterizedModelPicker: true } },
-          });
-          const result = (await send("cursor/list_available_models", {})) as {
-            models?: Array<{ value?: string; name?: string; configOptions?: CatalogOption[] }>;
-          };
-          finish(readCatalog(result.models ?? []));
-        } catch {
-          finish([]);
-        }
-      })();
-    });
+    void (async () => {
+      try {
+        await send("initialize", {
+          protocolVersion: 1,
+          clientInfo: { name: "agentsmaster", version: "0.1.0" },
+          clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, _meta: { parameterizedModelPicker: true } },
+        });
+        const result = (await send("cursor/list_available_models", {})) as {
+          models?: Array<{ value?: string; name?: string; configOptions?: CatalogOption[] }>;
+        };
+        finish(readCatalog(result.models ?? []));
+      } catch {
+        finish([]);
+      }
+    })();
   });
 }
 

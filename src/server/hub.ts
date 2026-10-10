@@ -72,7 +72,7 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
     switch (message.type) {
       case "add_cwd":
       case "add_project":
-        throw new Error("请在配置页登记项目，并绑定 agent");
+        throw new Error("请在配置页登记项目");
       case "remove_project":
         await removeProject(message.projectId);
         broadcastCatalog();
@@ -208,7 +208,7 @@ async function startSession(
   if (!text.trim()) throw new Error("消息是空的");
   const project = projectId ? mustProject(projectId) : null;
   const boundId = project ? project.agentId : agentId;
-  if (project && !boundId) throw new Error("项目还没绑定 agent");
+  if (project && !boundId) throw new Error("项目还没有通道");
   const agent = getAgent(boundId);
   if (!agent || !RUNNERS.includes(agent.runner)) throw new Error("agent 不存在");
   const session = await createSession({

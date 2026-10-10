@@ -41,7 +41,14 @@ export async function loadStore(): Promise<void> {
     if (!db.agents.some((agent) => agent.id === ADMIN_AGENT_ID)) {
       db.agents.unshift({ id: ADMIN_AGENT_ID, name: "AI管理员", runner: "pi" });
     }
-    for (const project of db.projects) project.agentId ??= "";
+    for (const project of db.projects) {
+      project.agentId ??= "";
+      const bound = db.agents.find((agent) => agent.id === project.agentId);
+      const runner = projectRunners.includes(project.runner) ? project.runner : bound && projectRunners.includes(bound.runner) ? bound.runner : "cursor";
+      const agent = ensureRunnerAgent(runner);
+      project.runner = runner;
+      project.agentId = agent.id;
+    }
     for (const session of db.sessions) {
       if (!session.agentId) {
         session.agentId = db.agents.find((agent) => agent.runner === session.runner)?.id ?? "";
@@ -117,12 +124,24 @@ export function getProject(id: string): Project | undefined {
   return db.projects.find((project) => project.id === id);
 }
 
-export async function addProject(projectPath: string, agentId: string, name?: string): Promise<Project> {
-  if (!getAgent(agentId)) throw new Error("agent 不存在");
+const projectRunners: RunnerId[] = ["cursor", "opencode", "claude", "codex"];
+
+function ensureRunnerAgent(runner: RunnerId): Agent {
+  const existing = db.agents.find((agent) => agent.id !== ADMIN_AGENT_ID && agent.runner === runner);
+  if (existing) return existing;
+  const agent: Agent = { id: randomUUID(), name: runner, runner };
+  db.agents.push(agent);
+  return agent;
+}
+
+export async function addProject(projectPath: string, runner: RunnerId, name?: string): Promise<Project> {
+  if (!projectRunners.includes(runner)) throw new Error("请选择通道");
+  const agent = ensureRunnerAgent(runner);
   const resolved = path.resolve(projectPath);
   const existing = db.projects.find((project) => project.path === resolved);
   if (existing) {
-    existing.agentId = agentId;
+    existing.runner = runner;
+    existing.agentId = agent.id;
     if (name?.trim()) existing.name = name.trim();
     await persist();
     return existing;
@@ -131,18 +150,21 @@ export async function addProject(projectPath: string, agentId: string, name?: st
     id: randomUUID(),
     name: name?.trim() || path.basename(resolved),
     path: resolved,
-    agentId,
+    agentId: agent.id,
+    runner,
   };
   db.projects.unshift(project);
   await persist();
   return project;
 }
 
-export async function bindProject(id: string, agentId: string): Promise<Project> {
+export async function setProjectRunner(id: string, runner: RunnerId): Promise<Project> {
+  if (!projectRunners.includes(runner)) throw new Error("请选择通道");
   const project = getProject(id);
   if (!project) throw new Error("项目不存在");
-  if (!getAgent(agentId)) throw new Error("agent 不存在");
-  project.agentId = agentId;
+  const agent = ensureRunnerAgent(runner);
+  project.runner = runner;
+  project.agentId = agent.id;
   await persist();
   return project;
 }
@@ -174,6 +196,7 @@ export async function releaseOrphanedRuns(): Promise<string[]> {
       id: randomUUID(),
       role: "log",
       text: "上一次回复中断了，可以继续输入",
+      at: Date.now(),
     });
     released.push(session.id);
   }
@@ -228,7 +251,7 @@ export async function pushMessage(
 ): Promise<void> {
   const session = getSession(sessionId);
   if (!session) return;
-  session.messages.push(message);
+  session.messages.push({ ...message, at: message.at ?? Date.now() });
   if (session.messages.length > 400) {
     session.messages.splice(0, session.messages.length - 400);
   }
@@ -241,7 +264,7 @@ export async function appendAgentText(sessionId: string, delta: string): Promise
   const last = session.messages.at(-1);
   if (last?.role === "agent") last.text += delta;
   else {
-    session.messages.push({ id: randomUUID(), role: "agent", text: delta });
+    session.messages.push({ id: randomUUID(), role: "agent", text: delta, at: Date.now() });
   }
   const agent = [...session.messages].reverse().find((message) => message.role === "agent");
   if (agent) session.summary = agent.text.replace(/\s+/g, " ").slice(0, 120);
