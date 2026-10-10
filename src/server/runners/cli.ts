@@ -7,6 +7,7 @@ import {
   pushMessage,
   updateSession,
 } from "../store.js";
+import { locateCodex } from "../codex-cli.js";
 import { runCursorPrompt } from "./cursor-acp.js";
 import type { RunnerEvents } from "./pi.js";
 import { promptWithImages, saveImages } from "./images.js";
@@ -71,8 +72,13 @@ async function launch(
 ): Promise<void> {
   const entry = live.get(sessionId);
   if (!entry) return;
+  const command = runner === "codex" ? locateCodex() : bins[runner];
+  if (!command) {
+    void finish(sessionId, "error", "找不到命令 codex。先在这台电脑上安装并登录 Codex。", events);
+    return;
+  }
   const args = buildArgs(runner, text, externalId);
-  const child = spawn(bins[runner], args, { cwd, env: process.env });
+  const child = spawn(command, args, { cwd, env: process.env });
   entry.child = child;
   entry.running = true;
 
@@ -150,6 +156,10 @@ async function takeLine(
 ): Promise<void> {
   const trimmed = line.trim();
   if (!trimmed) return;
+  if (runner === "codex") {
+    await takeCodexLine(sessionId, trimmed, events);
+    return;
+  }
   const parsed = runner === "cursor" ? parseCursorLine(trimmed) : parseLine(trimmed);
   if (parsed.externalId) {
     await updateSession(sessionId, { externalId: parsed.externalId });
@@ -240,7 +250,64 @@ function stringField(value: Record<string, unknown>, keys: string[]): string | u
   return undefined;
 }
 
+async function takeCodexLine(sessionId: string, line: string, events: RunnerEvents): Promise<void> {
+  const parsed = parseCodexLine(line);
+  if (parsed.externalId) await updateSession(sessionId, { externalId: parsed.externalId });
+  if (parsed.tool) {
+    await pushMessage(sessionId, { id: randomUUID(), role: "tool", text: parsed.tool });
+    events.onTool(sessionId, "start", parsed.tool);
+    return;
+  }
+  if (parsed.text) {
+    events.onDelta(sessionId, parsed.text);
+    void appendAgentText(sessionId, parsed.text);
+    return;
+  }
+  if (parsed.log) {
+    events.onLog(sessionId, parsed.log);
+    void pushMessage(sessionId, { id: randomUUID(), role: "log", text: parsed.log });
+  }
+}
+
+function parseCodexLine(line: string): { text?: string; tool?: string; externalId?: string; log?: string } {
+  if (!line.startsWith("{")) return { log: line };
+  try {
+    const value = JSON.parse(line) as Record<string, unknown>;
+    const type = typeof value.type === "string" ? value.type : "";
+    if (type === "thread.started" && typeof value.thread_id === "string") return { externalId: value.thread_id };
+    if (type === "error" || type === "turn.failed") {
+      return { log: stringField(value, ["message", "error"]) || "Codex 出错" };
+    }
+    if (type !== "item.completed" && type !== "item.started") return {};
+    const item = value.item;
+    if (!item || typeof item !== "object") return {};
+    const record = item as Record<string, unknown>;
+    const itemType = typeof record.type === "string" ? record.type : "";
+    if (itemType === "agent_message" && type === "item.completed" && typeof record.text === "string" && record.text) {
+      return { text: record.text };
+    }
+    if (type === "item.started" && itemType && itemType !== "agent_message" && itemType !== "reasoning") {
+      return { tool: codexToolLabel(record) };
+    }
+    return {};
+  } catch {
+    return { log: line };
+  }
+}
+
+function codexToolLabel(item: Record<string, unknown>): string {
+  const type = typeof item.type === "string" ? item.type : "tool";
+  if (type === "command_execution" && typeof item.command === "string") return item.command;
+  if (typeof item.command === "string") return item.command;
+  return type;
+}
+
 function buildArgs(runner: CliRunner, text: string, externalId?: string): string[] {
+  if (runner === "codex") {
+    return externalId
+      ? ["exec", "resume", "--json", externalId, text]
+      : ["exec", "--json", "--color", "never", "--skip-git-repo-check", "--sandbox", "workspace-write", text];
+  }
   if (runner === "opencode") {
     return externalId
       ? ["run", "--format", "json", "--session", externalId, text]

@@ -13,7 +13,8 @@
 - **Google Chrome**：使用浏览器时需要。
 - **swiftc**（macOS 命令行工具）：使用桌面画面和键鼠时需要。
 - **csc**（Windows 上的 .NET Framework 编译器）：在 Windows 上使用桌面画面和键鼠时需要。
-- **opencode**、**claude**、**codex**：使用对应通道时需要，并且要在本机登录。
+- **opencode**、**claude**：使用对应通道时需要，并且要在本机登录。
+- **codex**：命令 `codex`，或 ChatGPT / Codex 应用自带的命令行。服务会在 PATH、`CODEX_BIN` 和 `~/.codex/config.toml` 的 `CODEX_CLI_PATH` 里查找。使用 Codex 通道时需要，并且要在本机登录。
 
 Pi 通道和看截图不依赖上面的命令，改读环境变量里的模型密钥，见下方启动说明。
 
