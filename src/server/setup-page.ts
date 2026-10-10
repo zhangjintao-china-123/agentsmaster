@@ -20,6 +20,11 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   p { color: #c8c2b4; }
   section { margin-top: 28px; }
   form, .row { display: flex; gap: 8px; align-items: center; }
+  form.stack { flex-direction: column; align-items: stretch; }
+  form.stack button { align-self: flex-start; }
+  .project { flex-direction: column; align-items: stretch; gap: 8px; }
+  .project-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .project small { word-break: break-all; }
   input, select, button { font: inherit; border-radius: 10px; padding: 10px 12px; }
   input, select { flex: 1; background: #1c1f18; color: inherit; border: 1px solid #34382d; }
   button { background: #e6a15c; color: #1a140e; border: 0; }
@@ -35,7 +40,7 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
 </style>
 <main>
   <h1>配置</h1>
-  <p>登记项目时绑定一个 agent。手机上点项目就会和这个 agent 会话。</p>
+  <p>每个项目自带一个通道。手机上点项目，就和这个通道会话。</p>
   <section>
     <h2>手机配对</h2>
     <p>手机访问域名</p>
@@ -49,25 +54,16 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   </section>
   <p class="err" id="err"></p>
   <section>
-    <h2>Agent</h2>
-    <form id="agent-form">
-      <input name="name" placeholder="名称，例如 写代码的 Cursor" required />
-      <select name="runner" id="agent-runner">
+    <h2>项目</h2>
+    <form id="project-form" class="stack">
+      <input name="name" placeholder="显示名称，可空" />
+      <input name="path" placeholder="电脑上的文件夹路径" required />
+      <select name="runner">
         <option value="cursor">Cursor</option>
         <option value="opencode">OpenCode</option>
         <option value="claude">Claude</option>
         <option value="codex">Codex</option>
       </select>
-      <button>登记</button>
-    </form>
-    <ul id="agents"></ul>
-  </section>
-  <section>
-    <h2>项目</h2>
-    <form id="project-form">
-      <input name="name" placeholder="显示名称，可空" />
-      <input name="path" placeholder="电脑上的文件夹路径" required />
-      <select name="agentId" id="project-agent" required></select>
       <button>登记</button>
     </form>
     <ul id="projects"></ul>
@@ -82,65 +78,24 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
     if (!response.ok) throw new Error(body.message || "请求失败");
     return body;
   }
-  function row(title, detail, onRemove) {
-    const item = document.createElement("li");
-    const text = document.createElement("div");
-    text.innerHTML = "<b></b><small></small>";
-    text.querySelector("b").textContent = title;
-    text.querySelector("small").textContent = detail;
-    const button = document.createElement("button");
-    button.className = "ghost";
-    button.textContent = "移除";
-    button.onclick = onRemove;
-    item.append(text, button);
-    return item;
-  }
+  const runners = [
+    ["cursor", "Cursor"],
+    ["opencode", "OpenCode"],
+    ["claude", "Claude"],
+    ["codex", "Codex"],
+  ];
   async function load() {
     const data = await api("/api/catalog");
-    const agents = document.querySelector("#agents");
     const projects = document.querySelector("#projects");
-    const manageable = data.agents.filter((agent) => agent.id !== "pi-admin");
-    const listed = manageable.filter((agent) => agent.runner !== "pi");
-    agents.replaceChildren(...listed.map((agent) => {
-      return row(agent.name, agent.runner, async () => {
-        await api("/api/agents?id=" + encodeURIComponent(agent.id), { method: "DELETE" });
-        await load();
-      });
-    }));
-    const agentSelect = document.querySelector("#project-agent");
-    const selected = agentSelect.value;
-    agentSelect.replaceChildren(...listed.map((agent) => {
-      const option = document.createElement("option");
-      option.value = agent.id;
-      option.textContent = agent.name;
-      return option;
-    }));
-    if ([...agentSelect.options].some((option) => option.value === selected)) agentSelect.value = selected;
     projects.replaceChildren(...data.projects.map((project) => {
       const item = document.createElement("li");
+      item.className = "project";
+      const head = document.createElement("div");
+      head.className = "project-head";
       const text = document.createElement("div");
-      const bound = data.agents.find((agent) => agent.id === project.agentId);
       text.innerHTML = "<b></b><small></small>";
       text.querySelector("b").textContent = project.name;
-      text.querySelector("small").textContent = (bound ? bound.name : "未绑定") + " · " + project.path;
-      const select = document.createElement("select");
-      for (const agent of listed) {
-        const option = document.createElement("option");
-        option.value = agent.id;
-        option.textContent = agent.name;
-        if (agent.id === project.agentId) option.selected = true;
-        select.append(option);
-      }
-      select.onchange = async () => {
-        try {
-          await api("/api/projects/bind", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id: project.id, agentId: select.value }),
-          });
-          await load();
-        } catch (error) { showError(error); }
-      };
+      text.querySelector("small").textContent = project.path;
       const button = document.createElement("button");
       button.className = "ghost";
       button.textContent = "移除";
@@ -148,24 +103,34 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
         await api("/api/projects?id=" + encodeURIComponent(project.id), { method: "DELETE" });
         await load();
       };
-      item.append(text, select, button);
+      head.append(text, button);
+      const select = document.createElement("select");
+      for (const [value, label] of runners) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        if ((project.runner || "cursor") === value) option.selected = true;
+        select.append(option);
+      }
+      select.onchange = async () => {
+        try {
+          await api("/api/projects/runner", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: project.id, runner: select.value }),
+          });
+          await load();
+        } catch (error) { showError(error); }
+      };
+      item.append(head, select);
       return item;
     }));
   }
-  document.querySelector("#agent-form").onsubmit = async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    try {
-      await api("/api/agents", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), runner: data.get("runner") }) });
-      event.currentTarget.reset();
-      await load();
-    } catch (error) { showError(error); }
-  };
   document.querySelector("#project-form").onsubmit = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
-      await api("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), path: data.get("path"), agentId: data.get("agentId") }) });
+      await api("/api/projects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), path: data.get("path"), runner: data.get("runner") }) });
       event.currentTarget.reset();
       await load();
     } catch (error) { showError(error); }

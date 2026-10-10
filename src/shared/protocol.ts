@@ -21,6 +21,7 @@ export type Project = {
   name: string;
   path: string;
   agentId: string;
+  runner: RunnerId;
 };
 
 export type SessionStatus = "idle" | "working" | "done" | "error";

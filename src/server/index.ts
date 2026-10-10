@@ -11,7 +11,7 @@ import {
   addAgent,
   setAgentModel,
   addProject,
-  bindProject,
+  setProjectRunner,
   listAgents,
   listProjects,
   loadStore,
@@ -40,14 +40,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/projects" && req.method === "POST") {
       const body = await readJson(req);
-      const agentId = String(body.agentId || "");
-      const project = await addProject(String(body.path || ""), agentId, body.name ? String(body.name) : undefined);
+      const runner = String(body.runner || "cursor") as RunnerId;
+      const project = await addProject(String(body.path || ""), runner, body.name ? String(body.name) : undefined);
       broadcastCatalog();
       return json(res, 200, project);
     }
-    if (url.pathname === "/api/projects/bind" && req.method === "POST") {
+    if (url.pathname === "/api/projects/runner" && req.method === "POST") {
       const body = await readJson(req);
-      const project = await bindProject(String(body.id || ""), String(body.agentId || ""));
+      const project = await setProjectRunner(String(body.id || ""), String(body.runner || "") as RunnerId);
       broadcastCatalog();
       return json(res, 200, project);
     }
