@@ -1,11 +1,13 @@
 import os from "node:os";
 import path from "node:path";
 import { chromeDebugPort } from "./browser.js";
+import { ensurePublicUrl } from "./identity.js";
 
 export function setupPage(pairing: { url: string; svg: string } | null = null, models: { id: string; name: string }[] = []): string {
   const debugPort = chromeDebugPort();
   const browserUrl = `http://127.0.0.1:${debugPort}`;
   const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
+  const phoneUrl = ensurePublicUrl().replace(/^ws/, "http").replace(/\/$/, "");
   const modelOptions = models
     .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`)
     .join("");
@@ -31,10 +33,17 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   .pair { display: flex; gap: 16px; align-items: center; width: fit-content; max-width: 100%; margin-top: 12px; background: #f4f1ea; color: #121410; border-radius: 12px; padding: 12px; }
   .pair svg { width: 180px; height: 180px; flex: none; }
   .pair a { color: #1a140e; word-break: break-all; }
+  .phone-url { margin: 12px 0 0; padding: 12px 14px; background: #1c1f18; border-radius: 10px; }
+  .phone-url a { color: #e6a15c; font-size: 18px; word-break: break-all; }
 </style>
 <main>
   <h1>配置</h1>
   <p>登记项目时绑定一个 agent。手机上点项目就会和这个 agent 会话。</p>
+  <section>
+    <h2>手机访问地址</h2>
+    <p>安装完成后，用手机浏览器打开这个地址。</p>
+    <p class="phone-url"><a href="${escapeHtml(phoneUrl)}">${escapeHtml(phoneUrl)}</a></p>
+  </section>
   ${pairing ? `<section><h2>手机配对</h2><p>用手机扫这个码。每台电脑有自己的配对码，扫哪台就连哪台。中继看不到聊天内容。</p><div class="pair">${pairing.svg}<a href="${escapeHtml(pairing.url)}">${escapeHtml(pairing.url)}</a></div></section>` : "<p>设置 CLOUD_PUBLIC_URL 后，这里会显示手机配对码。</p>"}
   <section>
     <h2>浏览器</h2>
