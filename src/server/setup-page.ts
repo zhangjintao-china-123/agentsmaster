@@ -8,9 +8,6 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   const browserUrl = `http://127.0.0.1:${debugPort}`;
   const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
   const phoneUrl = phoneDomain(ensurePublicUrl());
-  const modelOptions = models
-    .map((model) => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`)
-    .join("");
   return `<!doctype html>
 <html lang="zh-CN">
 <meta charset="utf-8" />
@@ -56,14 +53,10 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
     <form id="agent-form">
       <input name="name" placeholder="名称，例如 写代码的 Cursor" required />
       <select name="runner" id="agent-runner">
-        <option value="pi">Pi</option>
         <option value="cursor">Cursor</option>
         <option value="opencode">OpenCode</option>
         <option value="claude">Claude</option>
         <option value="codex">Codex</option>
-      </select>
-      <select name="model" id="agent-model" hidden>
-        ${modelOptions || '<option value="">Auto</option>'}
       </select>
       <button>登记</button>
     </form>
@@ -81,7 +74,6 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   </section>
 </main>
 <script>
-  const models = ${JSON.stringify(models)};
   const err = document.querySelector("#err");
   const showError = (error) => { err.textContent = error?.message || String(error || ""); };
   async function api(url, options) {
@@ -108,38 +100,16 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
     const agents = document.querySelector("#agents");
     const projects = document.querySelector("#projects");
     const manageable = data.agents.filter((agent) => agent.id !== "pi-admin");
-    agents.replaceChildren(...manageable.map((agent) => {
-      const modelName = agent.model ? (models.find((model) => model.id === agent.model)?.name || agent.model) : "";
-      const item = row(agent.name, agent.runner + (modelName ? " · " + modelName : ""), async () => {
+    const listed = manageable.filter((agent) => agent.runner !== "pi");
+    agents.replaceChildren(...listed.map((agent) => {
+      return row(agent.name, agent.runner, async () => {
         await api("/api/agents?id=" + encodeURIComponent(agent.id), { method: "DELETE" });
         await load();
       });
-      if (agent.runner === "cursor") {
-        const select = document.createElement("select");
-        for (const model of models) {
-          const option = document.createElement("option");
-          option.value = model.id;
-          option.textContent = model.name;
-          if ((agent.model || "") === model.id) option.selected = true;
-          select.append(option);
-        }
-        select.onchange = async () => {
-          try {
-            await api("/api/agents/model", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ id: agent.id, model: select.value }),
-            });
-            await load();
-          } catch (error) { showError(error); }
-        };
-        item.insertBefore(select, item.lastChild);
-      }
-      return item;
     }));
     const agentSelect = document.querySelector("#project-agent");
     const selected = agentSelect.value;
-    agentSelect.replaceChildren(...manageable.map((agent) => {
+    agentSelect.replaceChildren(...listed.map((agent) => {
       const option = document.createElement("option");
       option.value = agent.id;
       option.textContent = agent.name;
@@ -154,7 +124,7 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
       text.querySelector("b").textContent = project.name;
       text.querySelector("small").textContent = (bound ? bound.name : "未绑定") + " · " + project.path;
       const select = document.createElement("select");
-      for (const agent of manageable) {
+      for (const agent of listed) {
         const option = document.createElement("option");
         option.value = agent.id;
         option.textContent = agent.name;
@@ -186,7 +156,7 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
-      await api("/api/agents", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), runner: data.get("runner"), model: data.get("model") }) });
+      await api("/api/agents", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: data.get("name"), runner: data.get("runner") }) });
       event.currentTarget.reset();
       await load();
     } catch (error) { showError(error); }
@@ -200,15 +170,6 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
       await load();
     } catch (error) { showError(error); }
   };
-  const runner = document.querySelector("#agent-runner");
-  const model = document.querySelector("#agent-model");
-  const syncModel = () => {
-    const cursor = runner.value === "cursor";
-    model.hidden = !cursor;
-    model.disabled = !cursor;
-  };
-  runner.onchange = syncModel;
-  syncModel();
   load().catch(showError);
 </script>
 `;
