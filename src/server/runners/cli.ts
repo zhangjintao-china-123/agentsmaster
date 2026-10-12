@@ -18,6 +18,7 @@ type LiveCli = {
   child: ChildProcessWithoutNullStreams | null;
   queue: string[];
   running: boolean;
+  settled: boolean;
 };
 
 const live = new Map<string, LiveCli>();
@@ -48,7 +49,7 @@ export async function runCliPrompt(options: {
     text: options.text.trim(),
   });
 
-  const entry = live.get(options.sessionId) ?? { child: null, queue: [], running: false };
+  const entry = live.get(options.sessionId) ?? { child: null, queue: [], running: false, settled: false };
   live.set(options.sessionId, entry);
 
   if (options.runner !== "codex" && entry.running && entry.child && entry.child.stdin.writable) {
@@ -72,6 +73,7 @@ async function launch(
 ): Promise<void> {
   const entry = live.get(sessionId);
   if (!entry) return;
+  entry.settled = false;
   const command = runner === "codex" ? locateCodex() : bins[runner];
   if (!command) {
     void finish(sessionId, "error", "找不到命令 codex。先在这台电脑上安装并登录 Codex。", events);
@@ -116,6 +118,13 @@ async function launch(
     entry.child = null;
     entry.running = false;
     const next = entry.queue.shift();
+    if (entry.settled) {
+      if (next) {
+        const latest = getSession(sessionId);
+        void launch(sessionId, cwd, runner, next, latest?.externalId, events);
+      }
+      return;
+    }
     if (next) {
       const latest = getSession(sessionId);
       void launch(sessionId, cwd, runner, next, latest?.externalId, events);
@@ -268,19 +277,29 @@ async function takeCodexLine(sessionId: string, line: string, events: RunnerEven
     void appendAgentText(sessionId, parsed.text);
     return;
   }
+  if (parsed.done) {
+    const entry = live.get(sessionId);
+    if (entry) entry.settled = true;
+    await finish(sessionId, parsed.failed ? "error" : "done", parsed.failed ? parsed.log || "Codex 出错" : "完成", events);
+    return;
+  }
   if (parsed.log) {
     events.onLog(sessionId, parsed.log);
     void pushMessage(sessionId, { id: randomUUID(), role: "log", text: parsed.log });
   }
 }
 
-function parseCodexLine(line: string): { text?: string; tool?: string; externalId?: string; log?: string } {
+function parseCodexLine(line: string): { text?: string; tool?: string; externalId?: string; log?: string; done?: boolean; failed?: boolean } {
   if (!line.startsWith("{")) return { log: line };
   try {
     const value = JSON.parse(line) as Record<string, unknown>;
     const type = typeof value.type === "string" ? value.type : "";
     if (type === "thread.started" && typeof value.thread_id === "string") return { externalId: value.thread_id };
-    if (type === "error" || type === "turn.failed") {
+    if (type === "turn.completed") return { done: true };
+    if (type === "turn.failed") {
+      return { done: true, failed: true, log: stringField(value, ["message", "error"]) || "Codex 出错" };
+    }
+    if (type === "error") {
       return { log: stringField(value, ["message", "error"]) || "Codex 出错" };
     }
     if (type !== "item.completed" && type !== "item.started") return {};

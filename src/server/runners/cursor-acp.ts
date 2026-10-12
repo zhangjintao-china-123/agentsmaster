@@ -65,6 +65,7 @@ type LiveCursor = {
   buffer: string;
   queue: Array<{ text: string; images: ImagePayload[] }>;
   running: boolean;
+  replaying: boolean;
   models: CursorModelChoice[];
   catalog?: CatalogModel[];
   catalogLoading?: Promise<void>;
@@ -172,6 +173,7 @@ function createEntry(cwd: string): LiveCursor {
     buffer: "",
     queue: [],
     running: false,
+    replaying: false,
     models: [],
   };
 }
@@ -192,11 +194,17 @@ async function turn(
     await ensureProcess(sessionId, events);
     const current = live.get(sessionId);
     if (!current?.child) throw new Error("Cursor 没有启动");
-    if (!current.acpId) {
-      current.acpId = await openAcpSession(current, externalId);
-      await updateSession(sessionId, { externalId: current.acpId });
+    const loading = !current.acpId;
+    if (loading) current.replaying = true;
+    try {
+      if (!current.acpId) {
+        current.acpId = await openAcpSession(current, externalId);
+        await updateSession(sessionId, { externalId: current.acpId });
+      }
+      await alignCursor(current, sessionId, events);
+    } finally {
+      current.replaying = false;
     }
-    await alignCursor(current, sessionId, events);
     const result = (await request(current, "session/prompt", {
       sessionId: current.acpId,
       prompt: promptBlocks(text, images),
@@ -340,7 +348,7 @@ function handleLine(sessionId: string, line: string, events: RunnerEvents): void
     return;
   }
   if (message.method === "session/update") {
-    takeUpdate(sessionId, message.params, events);
+    if (!entry.replaying) takeUpdate(sessionId, message.params, events);
     return;
   }
   if (message.id == null || typeof message.id !== "number") return;
