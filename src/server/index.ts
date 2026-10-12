@@ -4,7 +4,7 @@ import { RUNNERS, type RunnerId } from "../shared/protocol.js";
 import { addSocket, broadcastCatalog } from "./hub.js";
 import { setupPage } from "./setup-page.js";
 import { listCursorModels } from "./cursor-models.js";
-import { pairingCard } from "./identity.js";
+import { pairingCard, setPairing } from "./identity.js";
 import { locateCodex } from "./codex-cli.js";
 import { startTunnel } from "./tunnel.js";
 import {
@@ -36,6 +36,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/api/catalog" && req.method === "GET") {
       return json(res, 200, { projects: listProjects(), agents: listAgents() });
+    }
+    if (url.pathname === "/api/pairing" && req.method === "GET") {
+      const card = await pairingCard();
+      if (!card) return json(res, 400, { message: "还没有配对地址" });
+      return json(res, 200, card);
+    }
+    if (url.pathname === "/api/pairing" && req.method === "POST") {
+      const body = await readJson(req);
+      return json(res, 200, await setPairing({ policy: body.policy == null ? undefined : String(body.policy), rotate: body.rotate === true }));
     }
     if (url.pathname === "/api/projects" && req.method === "POST") {
       const body = await readJson(req);

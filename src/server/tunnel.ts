@@ -1,22 +1,20 @@
 import WebSocket from "ws";
 import { openBox, seal } from "../shared/e2ee.js";
 import { decodeKey } from "../shared/relay-frame.js";
-import { loadIdentity } from "./identity.js";
+import { acceptPairCode, currentPairCode, currentSecretKey, loadIdentity } from "./identity.js";
 
 type Frame = { id: string; event: "open" | "close" | "data"; data?: string };
 type Channel = {
   socket: WebSocket | null;
   queue: string[];
   phonePublic: Uint8Array | null;
+  generation: string;
 };
 
 export function startTunnel(localPort: number) {
   const cloud = process.env.CLOUD_URL;
   if (!cloud) return;
   const identity = loadIdentity();
-  const decoded = decodeKey(identity.secretKey);
-  if (!decoded) throw new Error("本机身份文件损坏");
-  const secretKey = decoded;
   const remoteUrl = cloud.replace(/^http/, "ws").replace(/\/$/, "") + `/link?serverId=${encodeURIComponent(identity.serverId)}`;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -42,7 +40,7 @@ export function startTunnel(localPort: number) {
       const frame = JSON.parse(String(raw)) as Frame;
       if (frame.event === "open") {
         console.log("手机接入");
-        channels.set(frame.id, { socket: null, queue: [], phonePublic: null });
+        channels.set(frame.id, { socket: null, queue: [], phonePublic: null, generation: "" });
         return;
       }
       const channel = channels.get(frame.id);
@@ -54,18 +52,29 @@ export function startTunnel(localPort: number) {
       }
       if (frame.data === undefined) return;
       if (!channel.phonePublic) {
-        const phonePublic = readHello(frame.data);
-        if (!phonePublic) {
+        const hello = readHello(frame.data);
+        if (!hello) {
           console.log("手机握手无效");
           return;
         }
-        channel.phonePublic = phonePublic;
+        if (!acceptPairCode(hello.code)) {
+          sendData(frame.id, JSON.stringify({ type: "e2ee_rejected", message: "授权码已失效，请重新扫一扫" }));
+          return;
+        }
+        channel.phonePublic = hello.publicKey;
+        channel.generation = currentPairCode();
         console.log("手机已配对");
         sendData(frame.id, JSON.stringify({ type: "e2ee_ready" }));
         openLocal(frame.id, channel);
         return;
       }
-      const text = openBox(readBox(frame.data) || "", channel.phonePublic, secretKey);
+      if (channel.generation !== currentPairCode()) {
+        sendData(frame.id, JSON.stringify({ type: "e2ee_rejected", message: "授权码已失效，请重新扫一扫" }));
+        channel.socket?.close();
+        channels.delete(frame.id);
+        return;
+      }
+      const text = openBox(readBox(frame.data) || "", channel.phonePublic, currentSecretKey());
       if (text === null) return;
       if (channel.socket?.readyState === WebSocket.OPEN) channel.socket.send(text);
       else channel.queue.push(text);
@@ -85,7 +94,7 @@ export function startTunnel(localPort: number) {
       });
       socket.on("message", (data) => {
         if (!channel.phonePublic) return;
-        const boxed = JSON.stringify({ type: "box", data: seal(String(data), channel.phonePublic, secretKey) });
+        const boxed = JSON.stringify({ type: "box", data: seal(String(data), channel.phonePublic, currentSecretKey()) });
         sendData(id, boxed);
       });
       socket.on("close", () => {
@@ -127,11 +136,13 @@ function keepAlive(socket: WebSocket) {
   socket.on("close", () => clearInterval(timer));
 }
 
-function readHello(data: string): Uint8Array | null {
+function readHello(data: string): { publicKey: Uint8Array; code?: string } | null {
   try {
-    const parsed = JSON.parse(data) as { type?: string; key?: string };
+    const parsed = JSON.parse(data) as { type?: string; key?: string; code?: string };
     if (parsed.type !== "e2ee_hello" || !parsed.key) return null;
-    return decodeKey(parsed.key);
+    const publicKey = decodeKey(parsed.key);
+    if (!publicKey) return null;
+    return { publicKey, code: parsed.code || undefined };
   } catch {
     return null;
   }

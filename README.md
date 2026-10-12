@@ -25,7 +25,7 @@ npm install
 npm run server
 ```
 
-浏览器打开 http://127.0.0.1:8787/setup ，在这里登记项目。每个项目选择 Cursor、OpenCode、Claude 或 Codex 其中一个通道。
+浏览器打开 http://127.0.0.1:8787/setup ，在这里登记项目。每个项目选择 Cursor、OpenCode、Claude 或 Codex 其中一个通道。手机配对码可以选永久，或按 1 小时、24 小时、7 天自动更换。更换之后旧码失效，手机要重新扫。
 
 ## 浏览器
 

@@ -1,8 +1,9 @@
 import os from "node:os";
 import path from "node:path";
 import { chromeDebugPort } from "./browser.js";
+import type { PairingCard } from "./identity.js";
 
-export function setupPage(pairing: { url: string; svg: string } | null = null, models: { id: string; name: string }[] = []): string {
+export function setupPage(pairing: PairingCard | null = null, models: { id: string; name: string }[] = []): string {
   const debugPort = chromeDebugPort();
   const browserUrl = `http://127.0.0.1:${debugPort}`;
   const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
@@ -41,6 +42,8 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   .pair { display: flex; gap: 16px; align-items: center; width: fit-content; max-width: 100%; margin-top: 12px; background: #f4f1ea; color: #121410; border-radius: 12px; padding: 12px; }
   .pair svg { width: 180px; height: 180px; flex: none; }
   .pair a { color: #1a140e; word-break: break-all; }
+  .pair-tools { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .pair-tools select { flex: none; min-width: 148px; }
   .phone-url { margin: 12px 0 0; padding: 12px 14px; background: #1c1f18; border-radius: 10px; }
   .phone-url a { color: #e6a15c; font-size: 18px; word-break: break-all; }
 </style>
@@ -51,7 +54,18 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
     <h2>手机配对</h2>
     <p>手机访问域名</p>
     <p class="phone-url"><a href="${escapeHtml(phoneUrl)}">${escapeHtml(phoneUrl)}</a></p>
-    ${pairing ? `<p>用手机打开上面这一行域名，再扫这个码。每台电脑有自己的配对码，扫哪台就连哪台。</p><div class="pair">${pairing.svg}<a href="${escapeHtml(pairing.url)}">${escapeHtml(pairing.url)}</a></div>` : ""}
+    ${pairing ? `<p>用手机打开上面这一行域名，再扫这个码。每台电脑有自己的授权码，扫哪台就连哪台。</p>
+    <div class="pair-tools">
+      <select id="pair-policy">
+        <option value="forever"${pairing.policy === "forever" ? " selected" : ""}>永久</option>
+        <option value="1h"${pairing.policy === "1h" ? " selected" : ""}>1 小时更新</option>
+        <option value="24h"${pairing.policy === "24h" ? " selected" : ""}>24 小时更新</option>
+        <option value="7d"${pairing.policy === "7d" ? " selected" : ""}>7 天更新</option>
+      </select>
+      <button type="button" id="pair-rotate">立即更换</button>
+    </div>
+    <p id="pair-note">${escapeHtml(pairing.detail)}</p>
+    <div class="pair" id="pair-card">${pairing.svg}<a href="${escapeHtml(pairing.url)}">${escapeHtml(pairing.url)}</a></div>` : ""}
   </section>
   <section>
     <h2>浏览器</h2>
@@ -146,6 +160,48 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
       await load();
     } catch (error) { dialogErr.textContent = error?.message || String(error || ""); }
   };
+  const pairPolicy = document.querySelector("#pair-policy");
+  const pairNote = document.querySelector("#pair-note");
+  const pairCard = document.querySelector("#pair-card");
+  let pairTimer = 0;
+  function paintPair(card) {
+    if (!pairPolicy || !pairCard) return;
+    pairPolicy.value = card.policy;
+    pairNote.textContent = card.detail;
+    pairCard.innerHTML = card.svg;
+    const link = document.createElement("a");
+    link.href = card.url;
+    link.textContent = card.url;
+    pairCard.append(link);
+    clearTimeout(pairTimer);
+    if (card.expiresAt) pairTimer = setTimeout(() => refreshPair().catch(showError), Math.max(1000, card.expiresAt - Date.now() + 500));
+  }
+  async function refreshPair() {
+    paintPair(await api("/api/pairing"));
+  }
+  if (pairPolicy) {
+    pairPolicy.onchange = async () => {
+      const next = pairPolicy.value;
+      const agreed = confirm("更换授权码期限后，旧码失效，手机要重新扫。继续吗？");
+      if (!agreed) {
+        await refreshPair();
+        return;
+      }
+      try {
+        paintPair(await api("/api/pairing", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ policy: next }) }));
+      } catch (error) {
+        showError(error);
+        await refreshPair();
+      }
+    };
+    document.querySelector("#pair-rotate").onclick = async () => {
+      if (!confirm("更换后，旧授权码失效，手机要重新扫。继续吗？")) return;
+      try {
+        paintPair(await api("/api/pairing", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rotate: true }) }));
+      } catch (error) { showError(error); }
+    };
+    setInterval(() => refreshPair().catch(() => {}), 60000);
+  }
   load().catch(showError);
 </script>
 `;

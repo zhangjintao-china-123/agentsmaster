@@ -69,4 +69,6 @@ try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<V
         }
     }
 }
-try await Task.sleep(nanoseconds: .max)
+while true {
+    try await Task.sleep(nanoseconds: 60_000_000_000)
+}
