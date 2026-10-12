@@ -9,7 +9,7 @@ import { runCliPrompt } from "./runners/cli.js";
 import { announceCursorSetting, answerCursorPermission, cancelCursor, configureCursor, pendingCursorPermissions } from "./runners/cursor-acp.js";
 import { cancelPi, runPiPrompt, type RunnerEvents } from "./runners/pi.js";
 import { browserStatus, ensureBrowser, navigateBrowser, phoneClick, phoneScroll, phoneType, setBrowserEmitters, setBrowserMobile, setChromeDebugPort, setPhoneControl, setScreencast, switchBrowserTab } from "./browser.js";
-import { alignChromeMcp, chromeMcpStatus } from "./chrome-mcp.js";
+import { alignChromeMcp, chromeMcpStatus, type McpCheckInput } from "./chrome-mcp.js";
 import { desktopPointer, setDesktopEmitters, setDesktopStream } from "./desktop-stream.js";
 import {
   createSession,
@@ -18,6 +18,7 @@ import {
   getProject,
   getSession,
   getTask,
+  latestStartedProjectId,
   listAgents,
   listProjects,
   listSessionInfos,
@@ -29,6 +30,8 @@ import {
 } from "./store.js";
 
 const sockets = new Set<WebSocket>();
+let openedProjectId: string | null = null;
+let startedProjectId: string | null = null;
 const browserWatchers = new Set<WebSocket>();
 const desktopWatchers = new Set<WebSocket>();
 
@@ -36,7 +39,7 @@ setBrowserEmitters(
   (frame) => {
     for (const socket of browserWatchers) send(socket, { type: "browser_frame", ...frame });
   },
-  (status) => broadcast({ type: "browser_status", ...status, mcp: chromeMcpStatus() }),
+  (status) => broadcast({ type: "browser_status", ...status, mcp: mcpNow() }),
 );
 
 setDesktopEmitters((frame) => {
@@ -79,7 +82,9 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
         broadcastCatalog();
         return;
       case "open_project":
+        openedProjectId = message.projectId;
         sendProject(socket, message.projectId);
+        broadcast({ type: "browser_status", ...browserStatus(), mcp: mcpNow() });
         return;
       case "open_session": {
         const session = getSession(message.sessionId);
@@ -105,17 +110,17 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
           browserWatchers.add(socket);
           await ensureBrowser();
           await setScreencast(true);
-          send(socket, { type: "browser_status", ...browserStatus(), mcp: chromeMcpStatus() });
+          send(socket, { type: "browser_status", ...browserStatus(), mcp: mcpNow() });
         } else {
           browserWatchers.delete(socket);
           if (browserWatchers.size === 0) await setScreencast(false);
         }
         return;
       case "browser_control":
-        send(socket, { type: "browser_status", ...setPhoneControl(message.on), mcp: chromeMcpStatus() });
+        send(socket, { type: "browser_status", ...setPhoneControl(message.on), mcp: mcpNow() });
         return;
       case "browser_mobile":
-        send(socket, { type: "browser_status", ...await setBrowserMobile(message.on, message.width, message.height, message.scale), mcp: chromeMcpStatus() });
+        send(socket, { type: "browser_status", ...await setBrowserMobile(message.on, message.width, message.height, message.scale), mcp: mcpNow() });
         return;
       case "browser_nav":
         await navigateBrowser(message.url);
@@ -124,10 +129,10 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
         await switchBrowserTab(message.targetId);
         return;
       case "browser_port":
-        send(socket, { type: "browser_status", ...await setChromeDebugPort(message.port), mcp: chromeMcpStatus() });
+        send(socket, { type: "browser_status", ...await setChromeDebugPort(message.port), mcp: mcpNow() });
         return;
       case "browser_mcp_align":
-        broadcast({ type: "browser_status", ...browserStatus(), mcp: alignChromeMcp() });
+        broadcast({ type: "browser_status", ...browserStatus(), mcp: mcpAlign() });
         return;
       case "browser_input":
         if (message.kind === "click") await phoneClick(message.x, message.y);
@@ -223,6 +228,10 @@ async function startSession(
     title: text.trim().slice(0, 48),
   });
   broadcast({ type: "session", session: publicSession(session), messages: [] });
+  if (project) {
+    startedProjectId = project.id;
+    broadcast({ type: "browser_status", ...browserStatus(), mcp: mcpNow() });
+  }
   void dispatch(session.id, project?.path ?? directDir(), agent.runner, text, images);
   return session;
 }
@@ -281,6 +290,26 @@ function broadcastCatalog() {
 }
 
 export { broadcastCatalog };
+
+function mcpNow() {
+  return chromeMcpStatus(mcpCheckInput());
+}
+
+function mcpAlign() {
+  return alignChromeMcp(mcpCheckInput());
+}
+
+function mcpCheckInput(): McpCheckInput {
+  const projects = listProjects().filter((project) => project.runner !== "pi");
+  const opened = openedProjectId ? getProject(openedProjectId) : undefined;
+  if (opened && opened.runner !== "pi") return { focus: opened, focusSource: "open", projects };
+  const started = startedProjectId ? getProject(startedProjectId) : undefined;
+  if (started && started.runner !== "pi") return { focus: started, focusSource: "started", projects };
+  const latestId = latestStartedProjectId();
+  const latest = latestId ? getProject(latestId) : undefined;
+  if (latest && latest.runner !== "pi") return { focus: latest, focusSource: "started", projects };
+  return { focus: projects[0] ?? null, focusSource: "listed", projects };
+}
 
 function mustProject(projectId: string) {
   const project = getProject(projectId);

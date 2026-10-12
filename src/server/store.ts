@@ -186,6 +186,13 @@ export function listSessionInfos(): SessionInfo[] {
   return db.sessions.map(toInfo);
 }
 
+export function latestStartedProjectId(): string | null {
+  for (const session of db.sessions) {
+    if (session.projectId) return session.projectId;
+  }
+  return null;
+}
+
 export async function releaseOrphanedRuns(): Promise<string[]> {
   const released: string[] = [];
   for (const session of db.sessions) {
