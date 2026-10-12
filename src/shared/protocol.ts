@@ -99,6 +99,7 @@ export type ClientMessage =
   | { type: "browser_input"; kind: "wheel"; x: number; y: number; deltaX: number; deltaY: number }
   | { type: "browser_input"; kind: "type"; text: string }
   | { type: "browser_port"; port: number }
+  | { type: "browser_mcp_align" }
   | { type: "desktop_watch"; on: boolean }
   | { type: "desktop_input"; kind: "down" | "up"; x: number; y: number; button: "left" | "right" }
   | { type: "desktop_input"; kind: "move"; x: number; y: number }
@@ -109,6 +110,13 @@ export type BrowserTab = {
   id: string;
   title: string;
   url: string;
+};
+
+export type ChromeMcpNotice = {
+  state: "aligned" | "missing" | "mismatch" | "unwritable";
+  port: number;
+  configuredPort?: number;
+  detail: string;
 };
 
 export type ServerMessage =
@@ -140,7 +148,7 @@ export type ServerMessage =
     }
   | { type: "browser_frame"; data: string; width: number; height: number }
   | { type: "desktop_frame"; data: string; width: number; height: number }
-  | { type: "browser_status"; open: boolean; url: string; title: string; owner: "idle" | "phone" | "agent"; activeId: string; tabs: BrowserTab[]; mobile: boolean; port: number }
+  | { type: "browser_status"; open: boolean; url: string; title: string; owner: "idle" | "phone" | "agent"; activeId: string; tabs: BrowserTab[]; mobile: boolean; port: number; mcp: ChromeMcpNotice }
   | { type: "git_status"; projectId: string; branch: string; files: GitFile[] }
   | { type: "git_diff"; projectId: string; path: string; diff: string }
   | { type: "committed"; projectId: string; ok: boolean; output: string }

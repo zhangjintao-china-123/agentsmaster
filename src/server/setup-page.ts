@@ -56,7 +56,7 @@ export function setupPage(pairing: { url: string; svg: string } | null = null, m
   <section>
     <h2>浏览器</h2>
     <p>手机上看的是这台电脑 ${browserUrl} 上的 Google Chrome。这个端口已经有 Chrome 在听，就接上现有的那个；否则本服务用配置目录 ${escapeHtml(profileDir)} 启动 Chrome。</p>
-    <p>Agent 操作网页时，必须使用 Chrome 的 MCP，并连接到 ${browserUrl}。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。</p>
+    <p>Agent 操作网页时，必须使用 chrome-devtools MCP，并连接到 ${browserUrl}。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。端口改了之后，Cursor 里的 MCP 地址也要改成同一个。Codex、Claude、OpenCode 需要自己把 MCP 指到这个地址。</p>
   </section>
   <p class="err" id="err"></p>
   <section>

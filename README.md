@@ -31,7 +31,7 @@ npm run server
 
 手机上看的是本机 `127.0.0.1:9222` 上的 Google Chrome。手机浏览器页里的「端口」可以改这个调试端口，改过之后会记住。也可以在启动前用 `CHROME_DEBUG_PORT` 指定初始端口。这个端口已经有 Chrome 在听，就接上现有的那个；否则用配置目录 `~/.agentsmaster/chrome` 启动。
 
-Agent 操作网页时必须使用 Chrome 的 MCP，并连接到这个调试地址。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。
+Agent 操作网页时必须使用 chrome-devtools MCP，并连接到这个调试地址。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。端口改了之后，Cursor 里的 MCP 地址也要改成同一个。Codex、Claude、OpenCode 需要自己把 MCP 指到这个地址。
 
 手机配对地址在启动时写入 `CLOUD_PUBLIC_URL`。没另外指定时，默认是 `https://agents.pptxgen.com`。要换成自己的地址，启动前设置这个变量。电脑连上中转还要设置 `CLOUD_URL`。
 

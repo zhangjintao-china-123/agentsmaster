@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { CursorModelChoice, ImagePayload, PermissionChange, PermissionOption } from "../../shared/protocol.js";
 import { listCursorModels } from "../cursor-models.js";
+import { cursorSessionMcpServers } from "../chrome-mcp.js";
 import { resolveAgentLaunch } from "../cursor-cli.js";
 import { appendAgentText, getAgent, getSession, pushMessage, updateSession } from "../store.js";
 import type { RunnerEvents } from "./pi.js";
@@ -312,13 +313,13 @@ async function openAcpSession(entry: LiveCursor, externalId?: string): Promise<s
   const cwd = path.resolve(entry.cwd);
   if (externalId) {
     try {
-      await request(entry, "session/load", { sessionId: externalId, cwd, mcpServers: [] });
+      await request(entry, "session/load", { sessionId: externalId, cwd, mcpServers: cursorSessionMcpServers() });
       return externalId;
     } catch {
       // Older print-mode ids, or a missing chat, start a fresh ACP session.
     }
   }
-  const created = (await request(entry, "session/new", { cwd, mcpServers: [] })) as { sessionId?: string };
+  const created = (await request(entry, "session/new", { cwd, mcpServers: cursorSessionMcpServers() })) as { sessionId?: string };
   if (!created.sessionId) throw new Error("Cursor 没有返回会话编号");
   return created.sessionId;
 }

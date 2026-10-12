@@ -9,6 +9,7 @@ import { runCliPrompt } from "./runners/cli.js";
 import { announceCursorSetting, answerCursorPermission, cancelCursor, configureCursor, pendingCursorPermissions } from "./runners/cursor-acp.js";
 import { cancelPi, runPiPrompt, type RunnerEvents } from "./runners/pi.js";
 import { browserStatus, ensureBrowser, navigateBrowser, phoneClick, phoneScroll, phoneType, setBrowserEmitters, setBrowserMobile, setChromeDebugPort, setPhoneControl, setScreencast, switchBrowserTab } from "./browser.js";
+import { alignChromeMcp, chromeMcpStatus } from "./chrome-mcp.js";
 import { desktopPointer, setDesktopEmitters, setDesktopStream } from "./desktop-stream.js";
 import {
   createSession,
@@ -35,7 +36,7 @@ setBrowserEmitters(
   (frame) => {
     for (const socket of browserWatchers) send(socket, { type: "browser_frame", ...frame });
   },
-  (status) => broadcast({ type: "browser_status", ...status }),
+  (status) => broadcast({ type: "browser_status", ...status, mcp: chromeMcpStatus() }),
 );
 
 setDesktopEmitters((frame) => {
@@ -104,17 +105,17 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
           browserWatchers.add(socket);
           await ensureBrowser();
           await setScreencast(true);
-          send(socket, { type: "browser_status", ...browserStatus() });
+          send(socket, { type: "browser_status", ...browserStatus(), mcp: chromeMcpStatus() });
         } else {
           browserWatchers.delete(socket);
           if (browserWatchers.size === 0) await setScreencast(false);
         }
         return;
       case "browser_control":
-        send(socket, { type: "browser_status", ...setPhoneControl(message.on) });
+        send(socket, { type: "browser_status", ...setPhoneControl(message.on), mcp: chromeMcpStatus() });
         return;
       case "browser_mobile":
-        send(socket, { type: "browser_status", ...await setBrowserMobile(message.on, message.width, message.height, message.scale) });
+        send(socket, { type: "browser_status", ...await setBrowserMobile(message.on, message.width, message.height, message.scale), mcp: chromeMcpStatus() });
         return;
       case "browser_nav":
         await navigateBrowser(message.url);
@@ -123,7 +124,10 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
         await switchBrowserTab(message.targetId);
         return;
       case "browser_port":
-        send(socket, { type: "browser_status", ...await setChromeDebugPort(message.port) });
+        send(socket, { type: "browser_status", ...await setChromeDebugPort(message.port), mcp: chromeMcpStatus() });
+        return;
+      case "browser_mcp_align":
+        broadcast({ type: "browser_status", ...browserStatus(), mcp: alignChromeMcp() });
         return;
       case "browser_input":
         if (message.kind === "click") await phoneClick(message.x, message.y);
