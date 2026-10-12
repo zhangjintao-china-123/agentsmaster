@@ -4,7 +4,7 @@ import path from "node:path";
 import type { CursorModelChoice, ImagePayload, PermissionChange, PermissionOption } from "../../shared/protocol.js";
 import { listCursorModels } from "../cursor-models.js";
 import { cursorSessionMcpServers } from "../chrome-mcp.js";
-import { resolveAgentLaunch } from "../cursor-cli.js";
+import { agentNeedsShell, cursorCliMissing, explainAgentError, locateAgent } from "../cursor-cli.js";
 import { appendAgentText, getAgent, getSession, pushMessage, updateSession } from "../store.js";
 import type { RunnerEvents } from "./pi.js";
 
@@ -260,12 +260,14 @@ async function ensureProcess(sessionId: string, events: RunnerEvents): Promise<v
     await entry.ready;
     return;
   }
-  const launch = resolveAgentLaunch(["--trust", "acp"]);
+  const launch = locateAgent(["--trust", "acp"]);
+  if (!launch) throw new Error(cursorCliMissing);
   const child = spawn(launch.command, launch.args, {
     cwd: entry.cwd,
     env: launch.env,
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
+    shell: agentNeedsShell(launch.command),
   });
   entry.child = child;
   entry.buffer = "";
@@ -276,8 +278,7 @@ async function ensureProcess(sessionId: string, events: RunnerEvents): Promise<v
       reject(error);
     };
     child.on("error", (error) => {
-      const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
-      fail(new Error(missing ? "找不到命令 agent。先在这台电脑上安装并登录 Cursor CLI。" : error.message));
+      fail(new Error(explainAgentError(error)));
     });
     child.on("close", (code) => {
       entry.child = null;
@@ -548,6 +549,7 @@ function plainCursorError(text: string): string {
   }
   if (/user rejected/i.test(raw)) return "这次操作没有被允许。";
   if (/not authenticated|authentication required/i.test(raw)) return "Cursor 还没登录。在这台电脑上先运行 agent login。";
+  if (/spawn EINVAL/i.test(raw)) return cursorCliMissing;
   return text;
 }
 
@@ -676,8 +678,17 @@ async function loadCursorCatalog(): Promise<CatalogModel[]> {
 
 function fetchCatalog(): Promise<CatalogModel[]> {
   return new Promise((resolve) => {
-    const launch = resolveAgentLaunch(["--trust", "acp"]);
-    const child = spawn(launch.command, launch.args, { env: launch.env, stdio: ["pipe", "pipe", "pipe"] });
+    const launch = locateAgent(["--trust", "acp"]);
+    if (!launch) {
+      resolve([]);
+      return;
+    }
+    const child = spawn(launch.command, launch.args, {
+      env: launch.env,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      shell: agentNeedsShell(launch.command),
+    });
     let buffer = "";
     let next = 1;
     let settled = false;

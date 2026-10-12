@@ -4,7 +4,8 @@ import { RUNNERS, type RunnerId } from "../shared/protocol.js";
 import { addSocket, broadcastCatalog } from "./hub.js";
 import { setupPage } from "./setup-page.js";
 import { listCursorModels } from "./cursor-models.js";
-import { pairingCard, setPairing } from "./identity.js";
+import { ensureCloudUrl, pairingCard, setPairing } from "./identity.js";
+import { cursorCliMissing, locateAgent } from "./cursor-cli.js";
 import { locateCodex } from "./codex-cli.js";
 import { startTunnel } from "./tunnel.js";
 import {
@@ -102,6 +103,9 @@ server.listen(port, "0.0.0.0", () => {
   console.log(`setup http://127.0.0.1:${port}/setup`);
   const codexBin = locateCodex();
   console.log(codexBin ? `Codex CLI ${codexBin}` : "未找到 Codex CLI（命令 codex）。服务继续运行，使用 Codex 前请先安装并登录。");
+  const cursorLaunch = locateAgent([]);
+  console.log(cursorLaunch ? `Cursor CLI ${cursorLaunch.command}` : cursorCliMissing);
+  console.log(`中转 ${ensureCloudUrl()}`);
   startTunnel(port);
 });
 

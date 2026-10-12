@@ -1,13 +1,15 @@
 import os from "node:os";
 import path from "node:path";
 import { chromeDebugPort } from "./browser.js";
-import type { PairingCard } from "./identity.js";
+import { cursorCliMissing, locateAgent } from "./cursor-cli.js";
+import { ensurePublicUrl, type PairingCard } from "./identity.js";
 
 export function setupPage(pairing: PairingCard | null = null, models: { id: string; name: string }[] = []): string {
   const debugPort = chromeDebugPort();
   const browserUrl = `http://127.0.0.1:${debugPort}`;
   const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
-  const phoneUrl = phoneDomain(process.env.CLOUD_PUBLIC_URL || process.env.CLOUD_URL || "https://agents.pptxgen.com");
+  const phoneUrl = phoneDomain(ensurePublicUrl());
+  const cursorReady = locateAgent([]) !== undefined;
   return `<!doctype html>
 <html lang="zh-CN">
 <meta charset="utf-8" />
@@ -52,7 +54,7 @@ export function setupPage(pairing: PairingCard | null = null, models: { id: stri
   <p>每个项目自带一个通道。手机上点项目，就和这个通道会话。</p>
   <section>
     <h2>手机配对</h2>
-    <p>手机访问域名</p>
+    <p>中转地址</p>
     <p class="phone-url"><a href="${escapeHtml(phoneUrl)}">${escapeHtml(phoneUrl)}</a></p>
     ${pairing ? `<p>用手机打开上面这一行域名，再扫这个码。每台电脑有自己的授权码，扫哪台就连哪台。</p>
     <div class="pair-tools">
@@ -70,7 +72,7 @@ export function setupPage(pairing: PairingCard | null = null, models: { id: stri
   <section>
     <h2>浏览器</h2>
     <p>手机上看的是这台电脑 ${browserUrl} 上的 Google Chrome。这个端口已经有 Chrome 在听，就接上现有的那个；否则本服务用配置目录 ${escapeHtml(profileDir)} 启动 Chrome。</p>
-    <p>Agent 操作网页时，必须使用 chrome-devtools MCP，并连接到 ${browserUrl}。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。端口改了之后，Cursor 里的 MCP 地址也要改成同一个。Codex、Claude、OpenCode 需要自己把 MCP 指到这个地址。</p>
+    <p>Agent 操作网页时，必须使用 chrome-devtools MCP，并连接到 ${browserUrl}。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。端口检查按当前打开的项目，没有打开时按最后启动的项目，Cursor、Codex、Claude、OpenCode 都会核对。</p>
   </section>
   <p class="err" id="err"></p>
   <section>
@@ -78,6 +80,7 @@ export function setupPage(pairing: PairingCard | null = null, models: { id: stri
       <h2>项目</h2>
       <button type="button" id="open-project">登记项目</button>
     </div>
+    ${cursorReady ? "" : `<p class="dialog-error">${escapeHtml(cursorCliMissing)}</p>`}
     <ul id="projects"></ul>
   </section>
   <dialog id="project-dialog">

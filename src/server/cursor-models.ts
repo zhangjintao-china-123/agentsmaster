@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { locateAgent } from "./cursor-cli.js";
+import { agentNeedsShell, locateAgent } from "./cursor-cli.js";
 
 export type CursorModel = { id: string; name: string };
 
@@ -19,6 +19,7 @@ function readModels(launch: { command: string; args: string[]; env: NodeJS.Proce
     const child = spawn(launch.command, launch.args, {
       env: launch.env,
       windowsHide: true,
+      shell: agentNeedsShell(launch.command),
     });
     let output = "";
     const finish = () => resolve(parseModels(output));

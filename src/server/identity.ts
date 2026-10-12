@@ -38,6 +38,13 @@ export function ensurePublicUrl(): string {
   process.env.CLOUD_PUBLIC_URL = defaultPublicUrl;
   return defaultPublicUrl;
 }
+
+export function ensureCloudUrl(): string {
+  const configured = process.env.CLOUD_URL?.trim();
+  if (configured) return configured;
+  process.env.CLOUD_URL = defaultPublicUrl;
+  return defaultPublicUrl;
+}
 const pairDuration: Record<PairPolicy, number | null> = {
   forever: null,
   "1h": 60 * 60 * 1000,

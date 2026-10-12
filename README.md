@@ -8,7 +8,7 @@
 
 运行服务只需要 **Node.js 22** 或更新版本。下面这些程序是按功能选用的。没装时服务照常启动，不会退出；用到那一项时，会在当次操作里说明缺什么。
 
-- **Cursor CLI**：命令 `agent`，并已执行 `agent login`。只用 Cursor 通道时需要。安装说明见 [Cursor CLI](https://cursor.com/docs/cli/overview)。
+- **Cursor CLI**：命令 `agent`，并已执行 `agent login`。登记 Cursor 项目前必须先安装。没装时，配置页和手机里都会提示安装，不会只显示 `spawn EINVAL`。安装说明见 [Cursor CLI](https://cursor.com/docs/cli/overview)。
 - **Git**：查看改动和提交时需要。
 - **Google Chrome**：使用浏览器时需要。
 - **swiftc**（macOS 命令行工具）：使用桌面画面和键鼠时需要。
@@ -33,7 +33,7 @@ npm run server
 
 Agent 操作网页时必须使用 chrome-devtools MCP，并连接到这个调试地址。这才是手机正在看的那个浏览器。Cursor 自带的浏览器是另一个窗口，手机上看不到。端口改了之后，Cursor 里的 MCP 地址也要改成同一个。Codex、Claude、OpenCode 需要自己把 MCP 指到这个地址。
 
-手机配对地址在启动时写入 `CLOUD_PUBLIC_URL`。没另外指定时，默认是 `https://agents.pptxgen.com`。要换成自己的地址，启动前设置这个变量。电脑连上中转还要设置 `CLOUD_URL`。
+中转地址默认是 `https://agents.pptxgen.com`。电脑和手机都走这个地址，不用再单独设置。要换成自己的中转，启动前设置 `CLOUD_URL`。配对二维码要换成别的域名时，再设置 `CLOUD_PUBLIC_URL`。
 
 看截图、以及 Pi 代理，需要模型密钥：
 

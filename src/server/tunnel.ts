@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 import { openBox, seal } from "../shared/e2ee.js";
 import { decodeKey } from "../shared/relay-frame.js";
-import { acceptPairCode, currentPairCode, currentSecretKey, loadIdentity } from "./identity.js";
+import { acceptPairCode, currentPairCode, currentSecretKey, ensureCloudUrl, loadIdentity } from "./identity.js";
 
 type Frame = { id: string; event: "open" | "close" | "data"; data?: string };
 type Channel = {
@@ -12,8 +12,7 @@ type Channel = {
 };
 
 export function startTunnel(localPort: number) {
-  const cloud = process.env.CLOUD_URL;
-  if (!cloud) return;
+  const cloud = ensureCloudUrl();
   const identity = loadIdentity();
   const remoteUrl = cloud.replace(/^http/, "ws").replace(/\/$/, "") + `/link?serverId=${encodeURIComponent(identity.serverId)}`;
   let stopped = false;

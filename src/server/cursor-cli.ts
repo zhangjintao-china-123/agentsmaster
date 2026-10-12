@@ -4,6 +4,17 @@ import path from "node:path";
 
 const versionName = /^\d{4}\.\d{1,2}\.\d{1,2}(-\d{2}-\d{2}-\d{2})?-[a-f0-9]+$/i;
 
+export const cursorCliMissing = "请先在这台电脑上安装 Cursor CLI（命令 agent），并执行 agent login。安装说明：https://cursor.com/docs/cli/overview";
+
+export function explainAgentError(error: NodeJS.ErrnoException): string {
+  if (error.code === "ENOENT" || error.code === "EINVAL" || /spawn EINVAL/i.test(error.message || "")) return cursorCliMissing;
+  return error.message;
+}
+
+export function agentNeedsShell(command: string): boolean {
+  return process.platform === "win32" && /\.(cmd|bat)$/i.test(command);
+}
+
 export function agentEnv(): NodeJS.ProcessEnv {
   const extras = [
     path.join(os.homedir(), ".local", "bin"),
