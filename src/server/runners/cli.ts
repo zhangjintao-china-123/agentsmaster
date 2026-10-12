@@ -7,7 +7,7 @@ import {
   pushMessage,
   updateSession,
 } from "../store.js";
-import { locateCodex } from "../codex-cli.js";
+import { codexEnv, locateCodex } from "../codex-cli.js";
 import { runCursorPrompt } from "./cursor-acp.js";
 import type { RunnerEvents } from "./pi.js";
 import { promptWithImages, saveImages } from "./images.js";
@@ -51,7 +51,7 @@ export async function runCliPrompt(options: {
   const entry = live.get(options.sessionId) ?? { child: null, queue: [], running: false };
   live.set(options.sessionId, entry);
 
-  if (entry.running && entry.child && entry.child.stdin.writable) {
+  if (options.runner !== "codex" && entry.running && entry.child && entry.child.stdin.writable) {
     entry.child.stdin.write(`${text}\n`);
     return;
   }
@@ -78,7 +78,11 @@ async function launch(
     return;
   }
   const args = buildArgs(runner, text, externalId);
-  const child = spawn(command, args, { cwd, env: process.env });
+  const child = spawn(command, args, {
+    cwd,
+    env: runner === "codex" ? codexEnv() : process.env,
+  });
+  if (runner === "codex") child.stdin.end();
   entry.child = child;
   entry.running = true;
 
@@ -94,7 +98,8 @@ async function launch(
   child.stdout.on("data", consume);
   child.stderr.on("data", (chunk: Buffer) => {
     const text = chunk.toString().trim();
-    if (text) events.onLog(sessionId, text);
+    if (!text || (runner === "codex" && text === "Reading additional input from stdin...")) return;
+    events.onLog(sessionId, text);
   });
 
   child.on("error", (error) => {
@@ -305,7 +310,7 @@ function codexToolLabel(item: Record<string, unknown>): string {
 function buildArgs(runner: CliRunner, text: string, externalId?: string): string[] {
   if (runner === "codex") {
     return externalId
-      ? ["exec", "resume", "--json", externalId, text]
+      ? ["exec", "resume", "--json", "--skip-git-repo-check", externalId, text]
       : ["exec", "--json", "--color", "never", "--skip-git-repo-check", "--sandbox", "workspace-write", text];
   }
   if (runner === "opencode") {

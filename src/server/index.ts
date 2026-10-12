@@ -3,10 +3,9 @@ import { WebSocketServer } from "ws";
 import { RUNNERS, type RunnerId } from "../shared/protocol.js";
 import { addSocket, broadcastCatalog } from "./hub.js";
 import { setupPage } from "./setup-page.js";
-import { locateCodex } from "./codex-cli.js";
-import { locateAgent } from "./cursor-cli.js";
 import { listCursorModels } from "./cursor-models.js";
-import { ensurePublicUrl, pairingCard } from "./identity.js";
+import { pairingCard } from "./identity.js";
+import { locateCodex } from "./codex-cli.js";
 import { startTunnel } from "./tunnel.js";
 import {
   addAgent,
@@ -22,7 +21,6 @@ import {
 } from "./store.js";
 
 const port = Number(process.env.PORT || 8787);
-const publicUrl = ensurePublicUrl();
 
 await loadStore();
 await releaseOrphanedRuns();
@@ -93,8 +91,6 @@ wss.on("connection", (socket) => addSocket(socket));
 server.listen(port, "0.0.0.0", () => {
   console.log(`agentsmaster server http://0.0.0.0:${port}`);
   console.log(`setup http://127.0.0.1:${port}/setup`);
-  console.log(`CLOUD_PUBLIC_URL ${publicUrl}`);
-  if (!locateAgent([])) console.log("未找到 Cursor CLI（命令 agent）。服务继续运行，使用 Cursor 前请先安装并登录。");
   const codexBin = locateCodex();
   console.log(codexBin ? `Codex CLI ${codexBin}` : "未找到 Codex CLI（命令 codex）。服务继续运行，使用 Codex 前请先安装并登录。");
   startTunnel(port);

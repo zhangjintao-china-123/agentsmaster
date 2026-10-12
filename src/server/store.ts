@@ -196,6 +196,7 @@ export async function releaseOrphanedRuns(): Promise<string[]> {
       id: randomUUID(),
       role: "log",
       text: "上一次回复中断了，可以继续输入",
+      at: Date.now(),
     });
     released.push(session.id);
   }
@@ -250,7 +251,7 @@ export async function pushMessage(
 ): Promise<void> {
   const session = getSession(sessionId);
   if (!session) return;
-  session.messages.push(message);
+  session.messages.push({ ...message, at: message.at ?? Date.now() });
   if (session.messages.length > 400) {
     session.messages.splice(0, session.messages.length - 400);
   }
@@ -263,7 +264,7 @@ export async function appendAgentText(sessionId: string, delta: string): Promise
   const last = session.messages.at(-1);
   if (last?.role === "agent") last.text += delta;
   else {
-    session.messages.push({ id: randomUUID(), role: "agent", text: delta });
+    session.messages.push({ id: randomUUID(), role: "agent", text: delta, at: Date.now() });
   }
   const agent = [...session.messages].reverse().find((message) => message.role === "agent");
   if (agent) session.summary = agent.text.replace(/\s+/g, " ").slice(0, 120);

@@ -1,13 +1,12 @@
 import os from "node:os";
 import path from "node:path";
 import { chromeDebugPort } from "./browser.js";
-import { ensurePublicUrl } from "./identity.js";
 
 export function setupPage(pairing: { url: string; svg: string } | null = null, models: { id: string; name: string }[] = []): string {
   const debugPort = chromeDebugPort();
   const browserUrl = `http://127.0.0.1:${debugPort}`;
   const profileDir = path.join(os.homedir(), ".agentsmaster", "chrome");
-  const phoneUrl = phoneDomain(ensurePublicUrl());
+  const phoneUrl = phoneDomain(process.env.CLOUD_PUBLIC_URL || process.env.CLOUD_URL || "https://agents.pptxgen.com");
   return `<!doctype html>
 <html lang="zh-CN">
 <meta charset="utf-8" />
