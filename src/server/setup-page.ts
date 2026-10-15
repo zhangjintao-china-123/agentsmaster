@@ -30,8 +30,6 @@ export function setupPage(pairing: PairingCard | null = null, models: { id: stri
   dialog h2 { margin: 0 0 4px; font-size: 20px; }
   .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .dialog-error { min-height: 1.5em; margin: 0; color: #e6a15c; }
-  .project { flex-direction: column; align-items: stretch; gap: 8px; }
-  .project-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
   .project small { word-break: break-all; }
   .runner { display: block; margin-top: 4px; color: #c8c2b4; }
   input, select, button { font: inherit; border-radius: 10px; padding: 10px 12px; }
@@ -123,8 +121,6 @@ export function setupPage(pairing: PairingCard | null = null, models: { id: stri
     projects.replaceChildren(...data.projects.map((project) => {
       const item = document.createElement("li");
       item.className = "project";
-      const head = document.createElement("div");
-      head.className = "project-head";
       const text = document.createElement("div");
       text.innerHTML = "<b></b><small></small>";
       text.querySelector("b").textContent = project.name;
@@ -140,8 +136,7 @@ export function setupPage(pairing: PairingCard | null = null, models: { id: stri
         await api("/api/projects?id=" + encodeURIComponent(project.id), { method: "DELETE" });
         await load();
       };
-      head.append(text, button);
-      item.append(head);
+      item.append(text, button);
       return item;
     }));
   }

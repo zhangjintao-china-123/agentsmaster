@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
-import { RUNNERS, type ClientMessage, type RunnerId, type ServerMessage } from "../shared/protocol.js";
+import { ADMIN_AGENT_ID, RUNNERS, type ClientMessage, type RunnerId, type ServerMessage } from "../shared/protocol.js";
 import { gitCommit, gitDiff, gitStatus } from "./git.js";
 import { runCliPrompt } from "./runners/cli.js";
 import { announceCursorSetting, answerCursorPermission, cancelCursor, configureCursor, pendingCursorPermissions } from "./runners/cursor-acp.js";
@@ -11,21 +11,39 @@ import { cancelPi, runPiPrompt, type RunnerEvents } from "./runners/pi.js";
 import { browserStatus, ensureBrowser, navigateBrowser, phoneClick, phoneScroll, phoneType, setBrowserEmitters, setBrowserMobile, setChromeDebugPort, setPhoneControl, setScreencast, switchBrowserTab } from "./browser.js";
 import { alignChromeMcp, chromeMcpStatus, type McpCheckInput } from "./chrome-mcp.js";
 import { desktopPointer, setDesktopEmitters, setDesktopStream } from "./desktop-stream.js";
+import { planRoom, readMentions, roomModelText } from "./rooms.js";
 import {
+  activateRoomSession,
+  addRoom,
+  addRoomJob,
+  armRoomJob,
+  consumeRoomJob,
   createSession,
   createTask,
+  currentProjectSession,
   getAgent,
   getProject,
+  getRoom,
   getSession,
   getTask,
   latestStartedProjectId,
   listAgents,
   listProjects,
+  listRooms,
   listSessionInfos,
+  listStoredRooms,
   publicSession,
+  pushMessage,
   removeProject,
+  removeRoom,
+  roomForSession,
+  roomJobForSession,
   sessionsFor,
+  setRoomMembers,
+  takeRoomJob,
+  takeRoomRound,
   tasksFor,
+  updateRoom,
   updateTask,
 } from "./store.js";
 
@@ -50,6 +68,7 @@ export function addSocket(socket: WebSocket): void {
   sockets.add(socket);
   send(socket, { type: "ready", cwd: process.cwd() });
   send(socket, { type: "catalog", projects: listProjects(), agents: listAgents(), sessions: listSessionInfos() });
+  send(socket, { type: "rooms", rooms: listRooms() });
   for (const ask of pendingCursorPermissions()) send(socket, { type: "permission", ...ask });
   socket.on("close", () => {
     sockets.delete(socket);
@@ -197,6 +216,69 @@ async function handle(socket: WebSocket, raw: string): Promise<void> {
         broadcastProject(task.projectId);
         return;
       }
+      case "add_room": {
+        const name = message.name.trim();
+        const rules = message.rules.trim();
+        if (!name) throw new Error("先写会议室名称");
+        if (!rules) throw new Error("先写工作规则");
+        const session = await createRoomHost(name);
+        await addRoom({ name, rules, sessionId: session.id, members: message.members });
+        broadcastRooms();
+        return;
+      }
+      case "update_room":
+        await updateRoom(message.roomId, { name: message.name, rules: message.rules, maxRounds: message.maxRounds });
+        broadcastRooms();
+        return;
+      case "set_room_members":
+        await setRoomMembers(message.roomId, message.members);
+        broadcastRooms();
+        return;
+      case "remove_room":
+        await removeRoom(message.roomId);
+        broadcastRooms();
+        return;
+      case "new_room_session": {
+        const room = getRoom(message.roomId);
+        if (!room) throw new Error("会议室不存在");
+        const session = await createRoomHost(room.name);
+        await activateRoomSession(room.id, session.id, true);
+        broadcastRooms();
+        broadcast({ type: "session", session: publicSession(session), messages: [] });
+        return;
+      }
+      case "open_room_session": {
+        const room = getRoom(message.roomId);
+        if (!room) throw new Error("会议室不存在");
+        const session = getSession(message.sessionId);
+        if (!session) throw new Error("会话不存在");
+        await activateRoomSession(room.id, session.id, false);
+        broadcastRooms();
+        broadcast({ type: "session", session: publicSession(session), messages: session.messages });
+        return;
+      }
+      case "room_say": {
+        const room = getRoom(message.roomId);
+        if (!room) throw new Error("会议室不存在");
+        const text = message.text.trim();
+        if (!text) throw new Error("消息是空的");
+        const seated = memberBrief(room);
+        const mentioned = readMentions(text, seated);
+        if (mentioned.missing.length > 0) {
+          throw new Error(`会上没有叫「${mentioned.missing.join("、")}」的人，用与会者的名字或职责来 @`);
+        }
+        if (mentioned.targets.length > 0) {
+          await pushMessage(room.sessionId, { id: randomUUID(), role: "user", text, at: Date.now() });
+          const latest = getSession(room.sessionId);
+          if (latest) broadcast({ type: "session", session: publicSession(latest), messages: latest.messages });
+          for (const target of mentioned.targets) {
+            await deliverToMember(target.projectId, text, room.id);
+          }
+          return;
+        }
+        await continueSession(room.sessionId, roomModelText(room, seated, `用户说：\n${text}`), undefined, text);
+        return;
+      }
       default:
         send(socket, { type: "error", message: "未知消息" });
     }
@@ -213,6 +295,7 @@ async function startSession(
   projectId: string | null,
   text: string,
   images?: { mediaType: string; data: string }[],
+  options?: { background?: boolean; roomId?: string },
 ) {
   if (!text.trim()) throw new Error("消息是空的");
   const project = projectId ? mustProject(projectId) : null;
@@ -227,7 +310,11 @@ async function startSession(
     runner: agent.runner,
     title: text.trim().slice(0, 48),
   });
-  broadcast({ type: "session", session: publicSession(session), messages: [] });
+  if (options?.roomId && project) {
+    const room = getRoom(options.roomId);
+    await addRoomJob(options.roomId, { sessionId: session.id, projectId: project.id, hostSessionId: room?.sessionId, wait: 1 });
+  }
+  broadcast({ type: "session", session: publicSession(session), messages: [], background: options?.background });
   if (project) {
     startedProjectId = project.id;
     broadcast({ type: "browser_status", ...browserStatus(), mcp: mcpNow() });
@@ -240,12 +327,14 @@ async function continueSession(
   sessionId: string,
   text: string,
   images?: { mediaType: string; data: string }[],
+  shown?: string,
+  options?: { hidden?: boolean },
 ) {
   const session = getSession(sessionId);
   if (!session) throw new Error("会话不存在");
   const project = session.projectId ? getProject(session.projectId) : undefined;
   if (!text.trim()) throw new Error("消息是空的");
-  void dispatch(session.id, project?.path ?? directDir(), session.runner, text, images);
+  void dispatch(session.id, project?.path ?? directDir(), session.runner, text, images, shown, options?.hidden);
 }
 
 function runnerEvents(): RunnerEvents {
@@ -255,7 +344,11 @@ function runnerEvents(): RunnerEvents {
     onLog: (id, line) => broadcast({ type: "log", sessionId: id, text: line }),
     onStatus: (id) => {
       const session = getSession(id);
-      if (session) broadcast({ type: "session_patch", session: publicSession(session) });
+      if (!session) return;
+      if (roomForSession(id)) broadcast({ type: "session", session: publicSession(session), messages: session.messages });
+      else if (roomJobForSession(id)) broadcast({ type: "session", session: publicSession(session), messages: session.messages, background: true });
+      else broadcast({ type: "session_patch", session: publicSession(session) });
+      if (session.status === "done" || session.status === "error") void settleRoom(session);
     },
     onPermission: (id, ask) => broadcast({ type: "permission", sessionId: id, ...ask }),
     onCursorSetting: (id, setting) => broadcast({ type: "cursor_setting", sessionId: id, ...setting }),
@@ -268,10 +361,109 @@ function dispatch(
   runner: RunnerId,
   text: string,
   images?: { mediaType: string; data: string }[],
+  shown?: string,
+  hidden?: boolean,
 ) {
   const events = runnerEvents();
-  if (runner === "pi") return runPiPrompt({ sessionId, cwd, text, images, events });
+  if (runner === "pi") return runPiPrompt({ sessionId, cwd, text, shown, hidden, images, events });
   return runCliPrompt({ sessionId, cwd, runner, text, images, events });
+}
+
+async function deliverToMember(projectId: string, text: string, roomId: string) {
+  const project = mustProject(projectId);
+  if (!project.agentId) throw new Error("项目还没有通道");
+  const agent = getAgent(project.agentId);
+  if (!agent || !RUNNERS.includes(agent.runner)) throw new Error("agent 不存在");
+  const room = getRoom(roomId);
+  if (!room) throw new Error("会议室不存在");
+  const current = currentProjectSession(project.id, agent.id);
+  if (!current) return startSession("", project.id, text, undefined, { background: true, roomId });
+  await armRoomJob(room.id, {
+    sessionId: current.id,
+    projectId: project.id,
+    hostSessionId: room.sessionId,
+    busy: current.status === "working",
+    separateTurns: agent.runner === "pi" || agent.runner === "cursor",
+  });
+  void continueSession(current.id, text);
+  return current;
+}
+
+async function createRoomHost(title: string) {
+  const agent = listAgents().find((item) => item.runner === "pi" && item.id !== ADMIN_AGENT_ID);
+  if (!agent) throw new Error("会议室需要 Pi 通道");
+  return createSession({
+    id: randomUUID(),
+    projectId: null,
+    agentId: agent.id,
+    runner: "pi",
+    title: title.slice(0, 48) || "会议室",
+  });
+}
+
+function memberBrief(room: { members: { projectId: string; role: string }[] }): { projectId: string; name: string; role: string }[] {
+  return room.members.flatMap((member) => {
+    const name = getProject(member.projectId)?.name;
+    return name ? [{ projectId: member.projectId, name, role: member.role }] : [];
+  });
+}
+
+async function settleRoom(session: NonNullable<ReturnType<typeof getSession>>): Promise<void> {
+  if (session.status !== "done" && session.status !== "error") return;
+  const agentText = [...session.messages].reverse().find((item) => item.role === "agent")?.text ?? "";
+  const plan = planRoom({
+    sessionId: session.id,
+    status: session.status,
+    summary: session.summary,
+    agentText,
+    rooms: listStoredRooms(),
+    projects: listProjects().map((item) => ({ id: item.id, name: item.name })),
+  });
+  if (plan.type === "none") return;
+  if (plan.type === "skip") {
+    const room = getRoom(plan.roomId);
+    if (!room) return;
+    await pushMessage(room.sessionId, { id: randomUUID(), role: "agent", text: plan.text });
+    const latest = getSession(room.sessionId);
+    if (latest) broadcast({ type: "session", session: publicSession(latest), messages: latest.messages });
+    return;
+  }
+  if (plan.type === "report") {
+    const gate = await consumeRoomJob(session.id);
+    if (gate === "wait") return;
+    await takeRoomJob(session.id);
+    const room = getRoom(plan.roomId);
+    if (!room) return;
+    const verb = plan.status === "error" ? "失败了" : "做完了";
+    const seated = memberBrief(room);
+    const speaker = seated.find((member) => member.projectId === plan.projectId);
+    const who = speaker?.role ? `${plan.projectName}（${speaker.role}）` : plan.projectName;
+    const hostId = plan.hostSessionId || room.sessionId;
+    await pushMessage(hostId, { id: randomUUID(), role: "agent", text: `**${who}**\n\n${plan.detail}`, at: Date.now() });
+    if (hostId !== room.sessionId) {
+      const parked = getSession(hostId);
+      if (parked) broadcast({ type: "session", session: publicSession(parked), messages: parked.messages });
+      return;
+    }
+    const asked = [...(getSession(room.sessionId)?.messages ?? [])].reverse().find((item) => item.role === "user" && item.text.includes("@"));
+    const body = `${asked ? `用户在会上说：\n${asked.text}\n\n` : ""}与会者「${who}」${verb}。\n结果：\n${plan.detail}`;
+    await continueSession(room.sessionId, roomModelText(room, seated, body), undefined, undefined, { hidden: true });
+    return;
+  }
+  const gate = await takeRoomRound(plan.roomId);
+  if (!gate.allowed) {
+    const room = getRoom(plan.roomId);
+    if (!room) return;
+    await pushMessage(room.sessionId, { id: randomUUID(), role: "agent", text: `已到最大轮次 ${gate.maxRounds}，这轮不再派人。`, at: Date.now() });
+    const latest = getSession(room.sessionId);
+    if (latest) broadcast({ type: "session", session: publicSession(latest), messages: latest.messages });
+    return;
+  }
+  await deliverToMember(plan.projectId, plan.task, plan.roomId);
+}
+
+function broadcastRooms() {
+  broadcast({ type: "rooms", rooms: listRooms() });
 }
 
 function directDir(): string {

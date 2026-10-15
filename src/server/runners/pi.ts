@@ -55,6 +55,8 @@ export async function runPiPrompt(options: {
   sessionId: string;
   cwd: string;
   text: string;
+  shown?: string;
+  hidden?: boolean;
   images?: ImagePayload[];
   events: RunnerEvents;
 }): Promise<void> {
@@ -63,11 +65,14 @@ export async function runPiPrompt(options: {
 
   const entry = await ensurePi(options.sessionId, options.cwd, options.events);
   const userText = options.text.trim();
-  await pushMessage(options.sessionId, {
-    id: randomUUID(),
-    role: "user",
-    text: userText,
-  });
+  const visible = options.hidden ? "" : (options.shown ?? options.text).trim();
+  if (visible) {
+    await pushMessage(options.sessionId, {
+      id: randomUUID(),
+      role: "user",
+      text: visible,
+    });
+  }
   await updateSession(options.sessionId, { status: "working", summary: "正在思考" });
   options.events.onStatus(options.sessionId);
 

@@ -52,6 +52,22 @@ export type Task = {
   sessionId?: string;
 };
 
+export type RoomMember = {
+  projectId: string;
+  role: string;
+};
+
+export type Room = {
+  id: string;
+  name: string;
+  rules: string;
+  members: RoomMember[];
+  sessionId: string;
+  sessionIds: string[];
+  maxRounds: number;
+  round: number;
+};
+
 export type GitFile = {
   path: string;
   status: string;
@@ -90,6 +106,13 @@ export type ClientMessage =
   | { type: "git_commit"; projectId: string; message: string }
   | { type: "add_task"; projectId: string; title: string }
   | { type: "start_task"; taskId: string; runner: RunnerId }
+  | { type: "add_room"; name: string; rules: string; members: RoomMember[] }
+  | { type: "update_room"; roomId: string; name?: string; rules?: string; maxRounds?: number }
+  | { type: "new_room_session"; roomId: string }
+  | { type: "open_room_session"; roomId: string; sessionId: string }
+  | { type: "set_room_members"; roomId: string; members: RoomMember[] }
+  | { type: "remove_room"; roomId: string }
+  | { type: "room_say"; roomId: string; text: string }
   | { type: "browser_watch"; on: boolean }
   | { type: "browser_control"; on: boolean }
   | { type: "browser_mobile"; on: boolean; width?: number; height?: number; scale?: number }
@@ -123,7 +146,8 @@ export type ServerMessage =
   | { type: "ready"; cwd: string }
   | { type: "catalog"; projects: Project[]; agents: Agent[]; sessions: SessionInfo[] }
   | { type: "project"; project: Project; sessions: SessionInfo[]; tasks: Task[] }
-  | { type: "session"; session: SessionInfo; messages: ChatMessage[] }
+  | { type: "session"; session: SessionInfo; messages: ChatMessage[]; background?: boolean }
+  | { type: "rooms"; rooms: Room[] }
   | { type: "session_patch"; session: SessionInfo }
   | { type: "delta"; sessionId: string; text: string }
   | { type: "tool"; sessionId: string; phase: "start" | "end"; name: string }
