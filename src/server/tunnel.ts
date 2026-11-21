@@ -9,7 +9,26 @@ type Channel = {
   queue: string[];
   phonePublic: Uint8Array | null;
   generation: string;
+  openTimer?: ReturnType<typeof setTimeout>;
 };
+
+function safeClose(socket: WebSocket | null | undefined) {
+  if (!socket) return;
+  if (socket.readyState === WebSocket.CONNECTING) {
+    socket.once("open", () => socket.close());
+    socket.terminate();
+    return;
+  }
+  if (socket.readyState === WebSocket.OPEN) socket.close();
+}
+
+function dropChannel(channels: Map<string, Channel>, id: string, channel: Channel) {
+  if (channel.openTimer) clearTimeout(channel.openTimer);
+  channel.openTimer = undefined;
+  safeClose(channel.socket);
+  channel.socket = null;
+  if (channels.get(id) === channel) channels.delete(id);
+}
 
 export function startTunnel(localPort: number) {
   const cloud = ensureCloudUrl();
@@ -26,7 +45,7 @@ export function startTunnel(localPort: number) {
     keepAlive(remote);
 
     const closeChannels = () => {
-      for (const channel of channels.values()) channel.socket?.close();
+      for (const [id, channel] of channels) dropChannel(channels, id, channel);
       channels.clear();
     };
 
@@ -45,8 +64,7 @@ export function startTunnel(localPort: number) {
       const channel = channels.get(frame.id);
       if (!channel) return;
       if (frame.event === "close") {
-        channel.socket?.close();
-        channels.delete(frame.id);
+        dropChannel(channels, frame.id, channel);
         return;
       }
       if (frame.data === undefined) return;
@@ -64,13 +82,12 @@ export function startTunnel(localPort: number) {
         channel.generation = currentPairCode();
         console.log("手机已配对");
         sendData(frame.id, JSON.stringify({ type: "e2ee_ready" }));
-        openLocal(frame.id, channel);
+        channel.openTimer = setTimeout(() => openLocal(frame.id, channel), 80);
         return;
       }
       if (channel.generation !== currentPairCode()) {
         sendData(frame.id, JSON.stringify({ type: "e2ee_rejected", message: "授权码已失效，请重新扫一扫" }));
-        channel.socket?.close();
-        channels.delete(frame.id);
+        dropChannel(channels, frame.id, channel);
         return;
       }
       const text = openBox(readBox(frame.data) || "", channel.phonePublic, currentSecretKey());
@@ -82,12 +99,19 @@ export function startTunnel(localPort: number) {
       closeChannels();
       schedule();
     });
-    remote.on("error", () => remote?.close());
+    remote.on("error", () => safeClose(remote));
 
     function openLocal(id: string, channel: Channel) {
+      channel.openTimer = undefined;
+      if (channels.get(id) !== channel) return;
       const socket = new WebSocket(`ws://127.0.0.1:${localPort}/ws`);
       channel.socket = socket;
+      socket.on("error", () => undefined);
       socket.on("open", () => {
+        if (channels.get(id) !== channel) {
+          safeClose(socket);
+          return;
+        }
         for (const item of channel.queue) socket.send(item);
         channel.queue = [];
       });
